@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<title>SIP GZM — Emulator</title>
+<style>
+:root{color-scheme:dark;--bg:#080b10;--panel:#131a23;--line:#2c3745;--yellow:#ffe500;--muted:#aab4c2;--green:#45e08a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7fb;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+header{padding:18px 16px 12px;background:#111827;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.brand{font-size:12px;letter-spacing:.16em;color:var(--yellow);font-weight:800}.head{display:flex;justify-content:space-between;align-items:center;gap:8px}.head h1{font-size:21px;margin:4px 0 0}.pill{font-size:11px;border:1px solid #485566;padding:5px 8px;border-radius:99px;color:#c9d3df}
+main{max-width:850px;margin:auto;padding:14px;display:grid;gap:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
+h2{font-size:16px;margin:0 0 12px}.controls{display:grid;grid-template-columns:1fr;gap:10px}
+label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+select,button{width:100%;border-radius:10px;border:1px solid #435064;background:#0b1017;color:#fff;padding:12px;font:inherit;min-height:44px}
+button{font-weight:700;cursor:pointer;background:#263446}button.primary{background:var(--yellow);color:#111;border-color:var(--yellow)}button:active{transform:scale(.99)}
+.btnrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.screen{background:#000;border:2px solid #4a4a4a;border-radius:9px;overflow:hidden;color:#111}
+.screen-top{height:12px;background:#161616}.route-head{display:grid;grid-template-columns:78px 1fr;background:var(--yellow);min-height:88px}
+.route-num{font-size:46px;display:grid;place-items:center;font-weight:900;border-right:2px solid #111}
+.destination{padding:12px 10px;display:flex;flex-direction:column;justify-content:center}.destination small{font-size:11px}.destination strong{font-size:19px;line-height:1.15}
+.stoplist{background:#fff}.stop{display:grid;grid-template-columns:64px 1fr;min-height:40px;border-bottom:1px solid #bbb;align-items:center;font-size:14px}
+.stop time{text-align:center;color:#555;font-size:12px;border-right:1px solid #bbb;padding:9px 3px}.stop .name{padding:7px 10px;font-weight:600}.stop.current{background:#ffe500;font-weight:900}.stop.current .name:before{content:"▶ ";font-size:12px}.screen-foot{background:#999;padding:7px 10px;font-size:11px;font-weight:800}
+.note{color:var(--muted);font-size:12px;line-height:1.5}.status{font-size:12px;color:var(--green);margin-top:8px}.error{color:#ff9b9b}.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.data-row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}.data-row:last-child{border-bottom:0}.tiny{font-size:11px;color:var(--muted)}
+@media(min-width:700px){main{grid-template-columns:320px 1fr;align-items:start}.screenpanel{grid-column:2;grid-row:1 / span 2}.controlpanel{grid-column:1}.livepanel{grid-column:1}.route-num{font-size:54px}}
+</style>
+</head>
+<body>
+<header><div class="head"><div><div class="brand">EMULATOR • TRANSPORT GZM</div><h1>SIP — panel sterowania</h1></div><span class="pill">wersja testowa</span></div></header>
+<main>
+<section class="panel controlpanel">
+<h2>Panel sterowania</h2>
+<div class="controls">
+<div><label for="route">Linia</label><select id="route"><option>Ładowanie linii…</option></select></div>
+<div><label for="trip">Kierunek / kurs</label><select id="trip" disabled><option>Najpierw wybierz linię</option></select></div>
+</div>
+<div class="btnrow"><button id="prev">← Poprzedni przystanek</button><button id="next">Następny przystanek →</button></div>
+<div class="btnrow"><button id="first">Początek trasy</button><button id="last">Koniec trasy</button></div>
+<p class="note">Sterowanie zmienia wyłącznie ekran emulatora. Nie steruje prawdziwym autobusem ani tablicą w pojeździe.</p>
+<div id="status" class="status">Uruchamianie…</div>
+</section>
+<section class="panel screenpanel">
+<h2>Podgląd ekranu pasażerskiego</h2>
+<div class="screen">
+<div class="screen-top"></div>
+<div class="route-head"><div class="route-num" id="screenRoute">—</div><div class="destination"><small>Tu jedzie:</small><strong id="screenDest">Wybierz kurs</strong></div></div>
+<div class="stoplist" id="stoplist"><div class="stop"><time>—</time><div class="name">Wybierz linię i kurs w panelu</div></div></div>
+<div class="screen-foot" id="screenFoot">Źródło: GTFS ZTM GZM</div>
+</div>
+<p class="tiny" id="screenMeta">Dane rozkładowe mogą nie uwzględniać bieżących zmian.</p>
+</section>
+<section class="panel livepanel">
+<h2>Dane pojazdów na żywo</h2>
+<div class="data-row"><span>Odczyt pozycji</span><strong id="liveCount">—</strong></div>
+<div id="liveInfo" class="note">Sprawdzam dostępność kanału GTFS-Realtime…</div>
+<button id="refreshLive" style="margin-top:10px">Odśwież dane na żywo</button>
+<p class="tiny">Pozycje pojazdów są niezależne od ręcznie wybranego kursu. Kanał może czasowo nie odpowiadać.</p>
+</section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let routes=[], stops=[], current=0, selectedRoute=null;
+function status(msg, bad=false){$('status').textContent=msg;$('status').className=bad?'status error':'status'}
+async function getJSON(url){const r=await fetch(url);const j=await r.json();if(!r.ok)throw new Error(j.details||j.error||'Błąd serwera');return j}
+async function init(){
+ try{
+  const data=await getJSON('/api/routes');routes=data.routes;
+  $('route').innerHTML='';
+  routes.forEach(r=>{const o=document.createElement('option');o.value=r.id;o.textContent=r.short_name+(r.long_name?' — '+r.long_name:'');$('route').appendChild(o)});
+  status(`Załadowano ${routes.length} linii z GTFS.`);
+  if(routes.length){selectedRoute=routes[0].id;await loadTrips()}
+ }catch(e){status('Nie udało się pobrać danych: '+e.message,true)}
+ loadLive();
+}
+async function loadTrips(){
+ selectedRoute=$('route').value;$('trip').disabled=true;$('trip').innerHTML='<option>Ładowanie kursów…</option>';
+ try{
+  const data=await getJSON('/api/trips/'+encodeURIComponent(selectedRoute));
+  $('trip').innerHTML='';
+  data.trips.forEach(t=>{const o=document.createElement('option');o.value=t.id;o.textContent=t.headsign+(t.short_name?' • '+t.short_name:'');$('trip').appendChild(o)});
+  if(!data.trips.length){$('trip').innerHTML='<option>Brak kursów dla dzisiejszego dnia</option>';stops=[];render();status('Nie znaleziono kursów dla tej linii na dziś.',true);return}
+  $('trip').disabled=false;await loadTrip();status(`Kursy z rozkładu na ${data.date}.`);
+ }catch(e){status('Błąd pobierania kursów: '+e.message,true)}
+}
+async function loadTrip(){
+ try{const d=await getJSON('/api/trip/'+encodeURIComponent($('trip').value));stops=d.stops;current=0;render()}
+ catch(e){status('Błąd pobierania trasy: '+e.message,true)}
+}
+function fmtTime(t){return t||'—'}
+function render(){
+ const r=routes.find(x=>x.id===selectedRoute);
+ $('screenRoute').textContent=r?r.short_name:'—';
+ const tripOpt=$('trip').selectedOptions[0];
+ $('screenDest').textContent=tripOpt?tripOpt.textContent:'Wybierz kurs';
+ if(!stops.length){$('stoplist').innerHTML='<div class="stop"><time>—</time><div class="name">Brak danych o przystankach</div></div>';return}
+ current=Math.max(0,Math.min(current,stops.length-1));
+ $('stoplist').innerHTML='';
+ // Show current and next four stops, similar to onboard displays.
+ stops.slice(current, current+5).forEach((s,i)=>{
+  const row=document.createElement('div');row.className='stop'+(i===0?' current':'');
+  const time=document.createElement('time');time.textContent=fmtTime(s.arrival);
+  const name=document.createElement('div');name.className='name';name.textContent=s.name;
+  row.append(time,name);$('stoplist').appendChild(row);
+ });
+ $('screenFoot').textContent='Aktualny przystanek: '+stops[current].name;
+ $('screenMeta').textContent=`Przystanek ${current+1} z ${stops.length} • czasy według rozkładu GTFS`;
+}
+$('route').addEventListener('change',loadTrips);
+$('trip').addEventListener('change',loadTrip);
+$('next').addEventListener('click',()=>{if(stops.length){current=Math.min(current+1,stops.length-1);render()}});
+$('prev').addEventListener('click',()=>{if(stops.length){current=Math.max(0,current-1);render()}});
+$('first').addEventListener('click',()=>{current=0;render()});
+$('last').addEventListener('click',()=>{current=Math.max(0,stops.length-1);render()});
+async function loadLive(){
+ $('liveInfo').textContent='Pobieram pozycje pojazdów…';
+ try{const d=await getJSON('/api/realtime');$('liveCount').textContent=d.count+' pojazdów';$('liveInfo').textContent=d.count?'Kanał GTFS-Realtime odpowiada. Dane obejmują pojazdy udostępnione przez feed.':'Feed działa, ale nie zwrócił pozycji.'}
+ catch(e){$('liveCount').textContent='niedostępne';$('liveInfo').textContent='Nie udało się odczytać pozycji na żywo. Spróbuj ponownie później.'}
+}
+$('refreshLive').addEventListener('click',loadLive);
+init();
+</script>
+</body></html>
