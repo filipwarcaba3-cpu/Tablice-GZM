@@ -29,6 +29,10 @@ Na komputerze otwórz `http://127.0.0.1:5000`. Aby użyć telefonu, komputer i t
 
 Pierwsze uruchomienie pobiera archiwum GTFS i może potrwać. Archiwum jest przechowywane w pamięci procesu przez 6 godzin.
 
+## Własne trasy
+
+W panelu „Własne trasy” można dodać linię testową, wpisać kierunek i listę przystanków (jeden wiersz na przystanek). Opcjonalnie podaj godzinę przed separatorem, np. `08:15 | Sosnowiec Dworzec`. Własna trasa pojawi się na liście linii z symbolem `★`; można ją obsługiwać przyciskami poprzedni/następny przystanek. Trasy są zapisywane w pliku `custom_routes.json` obok aplikacji. Na hostingu należy użyć trwałego dysku, jeśli trasy mają przetrwać ponowne wdrożenie lub restart środowiska.
+
 ## Dane i ograniczenia
 
 - Rozkłady i przystanki: rozszerzony GTFS ZTM GZM, publiczny mirror:

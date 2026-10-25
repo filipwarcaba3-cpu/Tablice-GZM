@@ -1,7 +1,7 @@
-import csv, io, os, zipfile, threading, time
+import csv, io, os, zipfile, threading, time, json, uuid
 from datetime import datetime, date
 from urllib.request import Request, urlopen
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 import requests
 
 app = Flask(__name__)
@@ -14,6 +14,25 @@ RT_VEHICLES = "https://gtfsrt.transportgzm.pl:5443/gtfsrt/gzm/vehiclePositions"
 RT_TRIPS = "https://gtfsrt.transportgzm.pl:5443/gtfsrt/gzm/tripUpdates"
 
 _data = {}
+CUSTOM_ROUTES_FILE = os.environ.get("CUSTOM_ROUTES_FILE", os.path.join(os.path.dirname(__file__), "custom_routes.json"))
+_custom_lock = threading.Lock()
+
+def read_custom_routes():
+    try:
+        with open(CUSTOM_ROUTES_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, list) else []
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return []
+
+def write_custom_routes(routes):
+    folder = os.path.dirname(CUSTOM_ROUTES_FILE)
+    if folder:
+        os.makedirs(folder, exist_ok=True)
+    tmp = CUSTOM_ROUTES_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(routes, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, CUSTOM_ROUTES_FILE)
 _loaded_at = 0
 _lock = threading.Lock()
 CACHE_SECONDS = 6 * 60 * 60
@@ -90,14 +109,57 @@ def api_routes():
                 "long_name": r.get("route_long_name",""),
                 "type": r.get("route_type","")
             })
-        routes.sort(key=lambda r: (not r["short_name"].isdigit(), int(r["short_name"]) if r["short_name"].isdigit() else 999999, r["short_name"]))
-        return jsonify({"routes": routes, "source": "GTFS ZTM GZM", "updated": datetime.now().isoformat(timespec="seconds")})
+        for r in read_custom_routes():
+            routes.append({"id": "custom:" + r["id"], "short_name": r["name"], "long_name": r.get("direction", "Własna trasa"), "type": "custom", "custom": True})
+        routes.sort(key=lambda r: (r.get("custom", False), not r["short_name"].isdigit(), int(r["short_name"]) if r["short_name"].isdigit() else 999999, r["short_name"]))
+        return jsonify({"routes": routes, "source": "GTFS ZTM GZM + trasy własne", "updated": datetime.now().isoformat(timespec="seconds")})
     except Exception as e:
+        # User-created routes remain usable even when the public GTFS feed is unavailable.
+        routes = [{"id": "custom:" + r["id"], "short_name": r["name"], "long_name": r.get("direction", "Własna trasa"), "type": "custom", "custom": True} for r in read_custom_routes()]
+        if routes:
+            return jsonify({"routes": routes, "source": "Trasy własne (GTFS chwilowo niedostępny)", "warning": str(e)[:300]})
         return jsonify({"error": "Nie udało się pobrać rozkładu GTFS.", "details": str(e)}), 502
+
+@app.route("/api/stops")
+def api_stops():
+    """Full stop/station list from the current ZTM GZM GTFS feed."""
+    try:
+        load_gtfs()
+        stops = []
+        seen = set()
+        for s in _data["stops"].values():
+            name = (s.get("stop_name") or "").strip()
+            sid = (s.get("stop_id") or "").strip()
+            if not name or not sid or sid in seen:
+                continue
+            seen.add(sid)
+            stops.append({
+                "id": sid,
+                "name": name,
+                "code": (s.get("stop_code") or "").strip(),
+                "lat": (s.get("stop_lat") or "").strip(),
+                "lon": (s.get("stop_lon") or "").strip(),
+                "parent_station": (s.get("parent_station") or "").strip()
+            })
+        stops.sort(key=lambda x: (x["name"].casefold(), x["id"]))
+        return jsonify({
+            "stops": stops,
+            "count": len(stops),
+            "source": "GTFS ZTM GZM",
+            "updated": datetime.now().isoformat(timespec="seconds")
+        })
+    except Exception as e:
+        return jsonify({"error": "Nie udało się pobrać listy przystanków GZM.", "details": str(e)}), 502
 
 @app.route("/api/trips/<path:route_id>")
 def api_trips(route_id):
     try:
+        if route_id.startswith("custom:"):
+            custom_id = route_id.split(":", 1)[1]
+            custom = next((r for r in read_custom_routes() if r["id"] == custom_id), None)
+            if not custom:
+                return jsonify({"error": "Nie znaleziono własnej trasy."}), 404
+            return jsonify({"trips": [{"id": "customtrip:" + custom["id"], "headsign": custom.get("direction") or custom["name"], "short_name": "WŁASNA"}], "date": date.today().isoformat()})
         load_gtfs()
         active = today_services()
         trips = [t for t in _data["trips"] if t.get("route_id") == route_id and (active is None or t.get("service_id") in active)]
@@ -117,6 +179,13 @@ def api_trips(route_id):
 @app.route("/api/trip/<path:trip_id>")
 def api_trip(trip_id):
     try:
+        if trip_id.startswith("customtrip:"):
+            custom_id = trip_id.split(":", 1)[1]
+            custom = next((r for r in read_custom_routes() if r["id"] == custom_id), None)
+            if not custom:
+                return jsonify({"error": "Nie znaleziono własnej trasy."}), 404
+            stops = [{"stop_id": str(i + 1), "name": stop["name"], "arrival": stop.get("time", ""), "departure": stop.get("time", ""), "sequence": str(i + 1), "lat": "", "lon": ""} for i, stop in enumerate(custom["stops"])]
+            return jsonify({"trip": {"id": trip_id, "route_id": "custom:" + custom_id, "headsign": custom.get("direction", ""), "short_name": "WŁASNA"}, "stops": stops, "custom": True})
         load_gtfs()
         trip = next((t for t in _data["trips"] if t.get("trip_id") == trip_id), None)
         if not trip:
@@ -141,6 +210,46 @@ def api_trip(trip_id):
         }, "stops": result})
     except Exception as e:
         return jsonify({"error": "Nie udało się pobrać przystanków kursu.", "details": str(e)}), 502
+
+@app.route("/api/custom-routes", methods=["GET", "POST"])
+def api_custom_routes():
+    if request.method == "GET":
+        return jsonify({"routes": read_custom_routes()})
+    payload = request.get_json(silent=True) or {}
+    name = str(payload.get("name", "")).strip()[:24]
+    direction = str(payload.get("direction", "")).strip()[:100]
+    raw_stops = payload.get("stops", [])
+    if not name:
+        return jsonify({"error": "Podaj numer lub nazwę trasy."}), 400
+    if not isinstance(raw_stops, list):
+        return jsonify({"error": "Przystanki muszą być listą."}), 400
+    stops = []
+    for item in raw_stops[:150]:
+        if isinstance(item, dict):
+            stop_name = str(item.get("name", "")).strip()[:120]
+            stop_time = str(item.get("time", "")).strip()[:8]
+        else:
+            stop_name, stop_time = str(item).strip()[:120], ""
+        if stop_name:
+            stops.append({"name": stop_name, "time": stop_time})
+    if len(stops) < 2:
+        return jsonify({"error": "Dodaj co najmniej dwa przystanki."}), 400
+    route = {"id": uuid.uuid4().hex[:12], "name": name, "direction": direction or "Trasa własna", "stops": stops, "created_at": datetime.now().isoformat(timespec="seconds")}
+    with _custom_lock:
+        routes = read_custom_routes()
+        routes.append(route)
+        write_custom_routes(routes)
+    return jsonify({"route": route}), 201
+
+@app.route("/api/custom-routes/<route_id>", methods=["DELETE"])
+def api_delete_custom_route(route_id):
+    with _custom_lock:
+        routes = read_custom_routes()
+        updated = [r for r in routes if r.get("id") != route_id]
+        if len(updated) == len(routes):
+            return jsonify({"error": "Nie znaleziono własnej trasy."}), 404
+        write_custom_routes(updated)
+    return jsonify({"ok": True})
 
 @app.route("/api/realtime")
 def api_realtime():
