@@ -14,7 +14,7 @@ main{max-width:850px;margin:auto;padding:14px;display:grid;gap:14px}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
 h2{font-size:16px;margin:0 0 12px}.controls{display:grid;grid-template-columns:1fr;gap:10px}
 label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
-select,button{width:100%;border-radius:10px;border:1px solid #435064;background:#0b1017;color:#fff;padding:12px;font:inherit;min-height:44px}
+select,button,input,textarea{width:100%;border-radius:10px;border:1px solid #435064;background:#0b1017;color:#fff;padding:12px;font:inherit;min-height:44px}textarea{resize:vertical;min-height:150px;line-height:1.45}input::placeholder,textarea::placeholder{color:#778394}
 button{font-weight:700;cursor:pointer;background:#263446}button.primary{background:var(--yellow);color:#111;border-color:var(--yellow)}button:active{transform:scale(.99)}
 .btnrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 .screen{background:#000;border:2px solid #4a4a4a;border-radius:9px;overflow:hidden;color:#111}
@@ -24,7 +24,7 @@ button{font-weight:700;cursor:pointer;background:#263446}button.primary{backgrou
 .stoplist{background:#fff}.stop{display:grid;grid-template-columns:64px 1fr;min-height:40px;border-bottom:1px solid #bbb;align-items:center;font-size:14px}
 .stop time{text-align:center;color:#555;font-size:12px;border-right:1px solid #bbb;padding:9px 3px}.stop .name{padding:7px 10px;font-weight:600}.stop.current{background:#ffe500;font-weight:900}.stop.current .name:before{content:"▶ ";font-size:12px}.screen-foot{background:#999;padding:7px 10px;font-size:11px;font-weight:800}
 .note{color:var(--muted);font-size:12px;line-height:1.5}.status{font-size:12px;color:var(--green);margin-top:8px}.error{color:#ff9b9b}.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.data-row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}.data-row:last-child{border-bottom:0}.tiny{font-size:11px;color:var(--muted)}
+.route-filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}.check{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:9px;padding:8px 10px;font-size:12px;color:#f4f7fb;margin:0}.check input{width:17px;min-height:17px;height:17px;margin:0;accent-color:var(--yellow)}.all-stops-list{max-height:430px;overflow:auto;margin-top:8px}.stop-entry{padding:9px 3px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;font-size:13px}.stop-entry:last-child{border-bottom:0}.stop-entry small{color:var(--muted);white-space:nowrap}..custom-item{border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:8px}.custom-item-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:700}.custom-item button{width:auto;min-height:34px;padding:6px 10px;font-size:12px;background:#40272b;border-color:#744047}.data-row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}.data-row:last-child{border-bottom:0}.tiny{font-size:11px;color:var(--muted)}
 @media(min-width:700px){main{grid-template-columns:320px 1fr;align-items:start}.screenpanel{grid-column:2;grid-row:1 / span 2}.controlpanel{grid-column:1}.livepanel{grid-column:1}.route-num{font-size:54px}}
 </style>
 </head>
@@ -33,6 +33,10 @@ button{font-weight:700;cursor:pointer;background:#263446}button.primary{backgrou
 <main>
 <section class="panel controlpanel">
 <h2>Panel sterowania</h2>
+<div class="route-filters" aria-label="Źródła linii">
+<label class="check"><input type="checkbox" id="showGzm" checked> Normalne linie GZM</label>
+<label class="check"><input type="checkbox" id="showCustom" checked> Własne trasy ★</label>
+</div>
 <div class="controls">
 <div><label for="route">Linia</label><select id="route"><option>Ładowanie linii…</option></select></div>
 <div><label for="trip">Kierunek / kurs</label><select id="trip" disabled><option>Najpierw wybierz linię</option></select></div>
@@ -52,6 +56,28 @@ button{font-weight:700;cursor:pointer;background:#263446}button.primary{backgrou
 </div>
 <p class="tiny" id="screenMeta">Dane rozkładowe mogą nie uwzględniać bieżących zmian.</p>
 </section>
+<section class="panel custompanel">
+<h2>Własne trasy</h2>
+<p class="note">Utwórz własną linię testową. Wpisz każdy przystanek w osobnym wierszu. Możesz podać godzinę, np. <strong>08:15 | Sosnowiec Dworzec</strong>. Trasy są zapisywane na serwerze emulatora.</p>
+<form id="customForm">
+<div style="margin-bottom:10px"><label for="customName">Numer / nazwa linii</label><input id="customName" maxlength="24" placeholder="np. TEST 1" required></div>
+<div style="margin-bottom:10px"><label for="customDirection">Kierunek / nazwa trasy</label><input id="customDirection" maxlength="100" placeholder="np. Sosnowiec — Katowice" required></div>
+<div><label for="customStops">Przystanki (minimum 2)</label><textarea id="customStops" placeholder="08:15 | Sosnowiec Dworzec
+08:20 | Pogoń Akademiki
+08:35 | Katowice Dworzec" required></textarea></div>
+<button class="primary" type="submit" style="margin-top:10px">＋ Dodaj własną trasę</button>
+</form>
+<div id="customStatus" class="note" style="margin-top:8px" aria-live="polite"></div>
+<div id="customList"></div>
+</section>
+<section class="panel allstops-panel">
+<h2>Wszystkie przystanki GZM</h2>
+<p class="note">Pełna lista przystanków pobrana z aktualnego pliku GTFS ZTM GZM. Wpisz nazwę lub kod, aby wyszukać przystanek.</p>
+<div style="margin-bottom:8px"><label for="stopSearch">Szukaj przystanku</label><input id="stopSearch" type="search" placeholder="np. Katowice, Sosnowiec, Dworzec…"></div>
+<div class="data-row"><span>Przystanki na liście</span><strong id="stopCount">Ładowanie…</strong></div>
+<div id="allStopsStatus" class="note" aria-live="polite">Pobieram listę przystanków…</div>
+<div id="allStopsList" class="all-stops-list"></div>
+</section>
 <section class="panel livepanel">
 <h2>Dane pojazdów na żywo</h2>
 <div class="data-row"><span>Odczyt pozycji</span><strong id="liveCount">—</strong></div>
@@ -63,15 +89,31 @@ button{font-weight:700;cursor:pointer;background:#263446}button.primary{backgrou
 <script>
 const $ = id => document.getElementById(id);
 let routes=[], stops=[], current=0, selectedRoute=null;
+let customRoutes=[], allRoutes=[], allGzmStops=[];
 function status(msg, bad=false){$('status').textContent=msg;$('status').className=bad?'status error':'status'}
-async function getJSON(url){const r=await fetch(url);const j=await r.json();if(!r.ok)throw new Error(j.details||j.error||'Błąd serwera');return j}
+async function getJSON(url, options={}){const r=await fetch(url,options);const j=await r.json();if(!r.ok)throw new Error(j.details||j.error||'Błąd serwera');return j}
+async function refreshRoutes(preferId=null){
+ const data=await getJSON('/api/routes');allRoutes=data.routes;
+ applyRouteFilters(preferId);
+}
+function applyRouteFilters(preferId=null){
+ const previous=preferId || $('route').value;
+ const showGzm=$('showGzm').checked, showCustom=$('showCustom').checked;
+ routes=allRoutes.filter(r=>r.custom?showCustom:showGzm);
+ $('route').innerHTML='';
+ routes.forEach(r=>{const o=document.createElement('option');o.value=r.id;o.textContent=(r.custom?'★ ':'')+r.short_name+(r.long_name?' — '+r.long_name:'');$('route').appendChild(o)});
+ if(previous && routes.some(r=>r.id===previous))$('route').value=previous;
+ else if(routes.length)$('route').value=routes[0].id;
+ if(!routes.length){
+   $('trip').innerHTML='<option>Włącz normalne linie GZM lub własne trasy</option>';$('trip').disabled=true;
+   selectedRoute=null;stops=[];render();
+ }
+}
 async function init(){
  try{
-  const data=await getJSON('/api/routes');routes=data.routes;
-  $('route').innerHTML='';
-  routes.forEach(r=>{const o=document.createElement('option');o.value=r.id;o.textContent=r.short_name+(r.long_name?' — '+r.long_name:'');$('route').appendChild(o)});
-  status(`Załadowano ${routes.length} linii z GTFS.`);
-  if(routes.length){selectedRoute=routes[0].id;await loadTrips()}
+  await refreshRoutes();
+  status(`Załadowano ${routes.length} widocznych linii. Możesz przełączać linie GZM i własne trasy.`);
+  if(routes.length){selectedRoute=$('route').value;await loadTrips()}
  }catch(e){status('Nie udało się pobrać danych: '+e.message,true)}
  loadLive();
 }
@@ -114,6 +156,52 @@ $('next').addEventListener('click',()=>{if(stops.length){current=Math.min(curren
 $('prev').addEventListener('click',()=>{if(stops.length){current=Math.max(0,current-1);render()}});
 $('first').addEventListener('click',()=>{current=0;render()});
 $('last').addEventListener('click',()=>{current=Math.max(0,stops.length-1);render()});
+
+async function refreshCustomList(){
+ try{const data=await getJSON('/api/custom-routes');customRoutes=data.routes;$('customList').innerHTML='';
+  if(!customRoutes.length){$('customList').innerHTML='<p class="tiny">Nie dodano jeszcze własnych tras.</p>';return}
+  customRoutes.forEach(r=>{const item=document.createElement('div');item.className='custom-item';const head=document.createElement('div');head.className='custom-item-head';const title=document.createElement('span');title.textContent=r.name+' — '+r.direction;const del=document.createElement('button');del.type='button';del.textContent='Usuń';del.addEventListener('click',async()=>{if(!confirm('Usunąć trasę '+r.name+'?'))return;try{await getJSON('/api/custom-routes/'+encodeURIComponent(r.id),{method:'DELETE'});await refreshCustomList();await refreshRoutes();if(routes.length){$('route').value=routes[0].id;await loadTrips()}else{stops=[];render()}$('customStatus').textContent='Usunięto trasę.'}catch(e){$('customStatus').textContent='Błąd: '+e.message}});head.append(title,del);const detail=document.createElement('div');detail.className='tiny';detail.textContent=r.stops.length+' przystanków';item.append(head,detail);item.addEventListener('dblclick',async()=>{const id='custom:'+r.id;await refreshRoutes(id);$('route').value=id;await loadTrips()});$('customList').appendChild(item)});
+ }catch(e){$('customStatus').textContent='Nie udało się wczytać własnych tras: '+e.message}
+}
+$('customForm').addEventListener('submit',async ev=>{
+ ev.preventDefault();const name=$('customName').value.trim(),direction=$('customDirection').value.trim();
+ const stops=$('customStops').value.split('\n').map(line=>{line=line.trim();if(!line)return null;const match=line.match(/^(\d{1,2}:\d{2}(?::\d{2})?)\s*[|—-]\s*(.+)$/);return match?{time:match[1],name:match[2].trim()}:{time:'',name:line}}).filter(Boolean);
+ $('customStatus').textContent='Zapisuję trasę…';
+ try{const response=await fetch('/api/custom-routes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,direction,stops})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Nie udało się zapisać trasy');
+  $('customForm').reset();await refreshCustomList();await refreshRoutes('custom:'+data.route.id);await loadTrips();$('customStatus').textContent='Dodano trasę „'+data.route.name+'”. Możesz nią sterować w panelu u góry.';status('Dodano własną trasę: '+data.route.name+'.');
+ }catch(e){$('customStatus').textContent='Błąd: '+e.message}
+});
+async function loadAllStops(){
+ $('allStopsStatus').textContent='Pobieram pełną listę przystanków…';
+ try{
+  const data=await getJSON('/api/stops');allGzmStops=data.stops;
+  $('stopCount').textContent=data.count.toLocaleString('pl-PL');
+  $('allStopsStatus').textContent='Źródło: '+data.source+'. Lista obejmuje przystanki występujące w pliku GTFS.';
+  renderAllStops();
+ }catch(e){
+  $('stopCount').textContent='niedostępne';
+  $('allStopsStatus').textContent='Nie udało się pobrać listy: '+e.message;
+ }
+}
+function renderAllStops(){
+ const query=$('stopSearch').value.trim().toLocaleLowerCase('pl-PL');
+ const filtered=allGzmStops.filter(s=>(s.name+' '+s.code+' '+s.id).toLocaleLowerCase('pl-PL').includes(query));
+ const shown=filtered.slice(0,500);
+ $('allStopsList').innerHTML='';
+ shown.forEach(s=>{
+  const row=document.createElement('div');row.className='stop-entry';
+  const name=document.createElement('span');name.textContent=s.name;
+  const meta=document.createElement('small');meta.textContent=(s.code?'Kod '+s.code+' · ':'')+'ID '+s.id;
+  row.append(name,meta);$('allStopsList').appendChild(row);
+ });
+ if(!filtered.length){$('allStopsList').innerHTML='<p class="tiny">Brak wyników. Spróbuj wpisać inną nazwę.</p>'}
+ else if(filtered.length>shown.length){
+  const note=document.createElement('p');note.className='tiny';note.textContent='Wyświetlono '+shown.length+' z '+filtered.length+' wyników. Doprecyzuj wyszukiwanie, aby znaleźć pozostałe.';$('allStopsList').appendChild(note);
+ }
+}
+$('stopSearch').addEventListener('input',renderAllStops);
+$('showGzm').addEventListener('change',()=>{applyRouteFilters();if(routes.length){loadTrips()}});
+$('showCustom').addEventListener('change',()=>{applyRouteFilters();if(routes.length){loadTrips()}});
 async function loadLive(){
  $('liveInfo').textContent='Pobieram pozycje pojazdów…';
  try{const d=await getJSON('/api/realtime');$('liveCount').textContent=d.count+' pojazdów';$('liveInfo').textContent=d.count?'Kanał GTFS-Realtime odpowiada. Dane obejmują pojazdy udostępnione przez feed.':'Feed działa, ale nie zwrócił pozycji.'}
@@ -121,5 +209,6 @@ async function loadLive(){
 }
 $('refreshLive').addEventListener('click',loadLive);
 init();
+refreshCustomList();
 </script>
 </body></html>
