@@ -1,214 +1,250 @@
 <!doctype html>
 <html lang="pl">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111827">
-<title>SIP GZM — Emulator</title>
-<style>
-:root{color-scheme:dark;--bg:#080b10;--panel:#131a23;--line:#2c3745;--yellow:#ffe500;--muted:#aab4c2;--green:#45e08a}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7fb;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
-header{padding:18px 16px 12px;background:#111827;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
-.brand{font-size:12px;letter-spacing:.16em;color:var(--yellow);font-weight:800}.head{display:flex;justify-content:space-between;align-items:center;gap:8px}.head h1{font-size:21px;margin:4px 0 0}.pill{font-size:11px;border:1px solid #485566;padding:5px 8px;border-radius:99px;color:#c9d3df}
-main{max-width:850px;margin:auto;padding:14px;display:grid;gap:14px}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
-h2{font-size:16px;margin:0 0 12px}.controls{display:grid;grid-template-columns:1fr;gap:10px}
-label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
-select,button,input,textarea{width:100%;border-radius:10px;border:1px solid #435064;background:#0b1017;color:#fff;padding:12px;font:inherit;min-height:44px}textarea{resize:vertical;min-height:150px;line-height:1.45}input::placeholder,textarea::placeholder{color:#778394}
-button{font-weight:700;cursor:pointer;background:#263446}button.primary{background:var(--yellow);color:#111;border-color:var(--yellow)}button:active{transform:scale(.99)}
-.btnrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
-.screen{background:#000;border:2px solid #4a4a4a;border-radius:9px;overflow:hidden;color:#111}
-.screen-top{height:12px;background:#161616}.route-head{display:grid;grid-template-columns:78px 1fr;background:var(--yellow);min-height:88px}
-.route-num{font-size:46px;display:grid;place-items:center;font-weight:900;border-right:2px solid #111}
-.destination{padding:12px 10px;display:flex;flex-direction:column;justify-content:center}.destination small{font-size:11px}.destination strong{font-size:19px;line-height:1.15}
-.stoplist{background:#fff}.stop{display:grid;grid-template-columns:64px 1fr;min-height:40px;border-bottom:1px solid #bbb;align-items:center;font-size:14px}
-.stop time{text-align:center;color:#555;font-size:12px;border-right:1px solid #bbb;padding:9px 3px}.stop .name{padding:7px 10px;font-weight:600}.stop.current{background:#ffe500;font-weight:900}.stop.current .name:before{content:"▶ ";font-size:12px}.screen-foot{background:#999;padding:7px 10px;font-size:11px;font-weight:800}
-.note{color:var(--muted);font-size:12px;line-height:1.5}.status{font-size:12px;color:var(--green);margin-top:8px}.error{color:#ff9b9b}.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.route-filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}.check{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:9px;padding:8px 10px;font-size:12px;color:#f4f7fb;margin:0}.check input{width:17px;min-height:17px;height:17px;margin:0;accent-color:var(--yellow)}.all-stops-list{max-height:430px;overflow:auto;margin-top:8px}.stop-entry{padding:9px 3px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;font-size:13px}.stop-entry:last-child{border-bottom:0}.stop-entry small{color:var(--muted);white-space:nowrap}..custom-item{border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:8px}.custom-item-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:700}.custom-item button{width:auto;min-height:34px;padding:6px 10px;font-size:12px;background:#40272b;border-color:#744047}.data-row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}.data-row:last-child{border-bottom:0}.tiny{font-size:11px;color:var(--muted)}
-@media(min-width:700px){main{grid-template-columns:320px 1fr;align-items:start}.screenpanel{grid-column:2;grid-row:1 / span 2}.controlpanel{grid-column:1}.livepanel{grid-column:1}.route-num{font-size:54px}}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#17191c">
+  <title>Emulator SIP GZM</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <style>
+    :root{--ink:#17191c;--ink2:#25292d;--yellow:#ffd500;--yellow2:#e9bd00;--paper:#eceff0;--paper2:#dfe3e5;--line:#b7bec2;--muted:#6c7479;--green:#267a4a;--red:#bd3d32;--white:#fff;--radius:14px}
+    *{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Arial,Helvetica,sans-serif;background:#d9dddf;color:var(--ink)}button,input,select,textarea{font:inherit}button{cursor:pointer}
+    .app-header{height:68px;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 22px;border-bottom:5px solid var(--yellow);position:sticky;top:0;z-index:500}
+    .brand{display:flex;align-items:center;gap:13px;font-weight:900;letter-spacing:.07em}.brand-mark{width:38px;height:38px;background:var(--yellow);color:#111;display:grid;place-items:center;font-size:17px;font-weight:1000;border-radius:5px}.brand small{display:block;color:#aeb5b9;font-size:10px;letter-spacing:.16em;margin-top:3px}.header-right{display:flex;align-items:center;gap:10px;color:#dce0e2;font-size:12px}.live-dot{width:8px;height:8px;background:#4bd17a;border-radius:50%;display:inline-block;box-shadow:0 0 0 4px #4bd17a22}
+    .layout{max-width:1500px;margin:0 auto;padding:18px;display:grid;grid-template-columns:270px minmax(0,1fr);gap:18px}.sidebar{background:var(--ink2);color:#fff;border-radius:var(--radius);padding:16px;height:calc(100vh - 104px);position:sticky;top:86px;display:flex;flex-direction:column;gap:14px;overflow:auto}.side-title{color:#aeb5b9;font-size:10px;letter-spacing:.18em;font-weight:800;padding:5px 7px}.nav-btn{border:0;background:transparent;color:#d8dcde;text-align:left;padding:13px 12px;border-radius:9px;font-weight:700;display:flex;gap:12px;align-items:center}.nav-btn span:first-child{width:20px;text-align:center;font-size:17px}.nav-btn.active,.nav-btn:hover{background:#3b4045;color:var(--yellow)}.side-foot{margin-top:auto;border-top:1px solid #42474b;padding:13px 7px;color:#9ea6aa;font-size:11px;line-height:1.5}
+    .main{min-width:0}.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:2px 2px 16px}.page-head h1{font-size:25px;margin:0 0 5px;font-weight:900}.sub{color:#687177;font-size:13px}.page{display:none}.page.active{display:block}.panel{background:#f5f6f6;border:1px solid var(--line);border-radius:var(--radius);padding:17px;box-shadow:0 4px 18px #1a20240b;margin-bottom:15px}.panel h2,.panel h3{margin:0 0 12px}.panel h2{font-size:18px}.panel h3{font-size:15px}.grid-2{display:grid;grid-template-columns:minmax(250px,.85fr) minmax(0,1.3fr);gap:15px}.controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.field{display:flex;flex-direction:column;gap:6px}.field.full{grid-column:1/-1}.field label{font-size:11px;font-weight:800;color:#586168;text-transform:uppercase;letter-spacing:.08em}.field input,.field select,.field textarea{width:100%;border:1px solid #aeb6ba;border-radius:8px;padding:11px 12px;background:#fff;color:#1a1c1e;min-width:0}.field textarea{min-height:180px;resize:vertical;line-height:1.45}.btn{border:0;border-radius:8px;padding:11px 14px;background:var(--yellow);color:#151719;font-weight:900;box-shadow:0 2px 0 #b99a00}.btn:hover{background:#ffe24a}.btn.dark{background:#2a2e32;color:#fff;box-shadow:none}.btn.ghost{background:#e2e6e7;color:#202427;box-shadow:none;border:1px solid #bbc2c5}.btn.danger{background:#c74439;color:#fff;box-shadow:none}.btn.small{padding:7px 9px;font-size:12px}.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}.muted{color:#727b80}.tiny{font-size:11px;color:#747d82;line-height:1.5}.status-pill{display:inline-flex;align-items:center;gap:7px;border-radius:99px;padding:6px 9px;background:#e3e7e8;color:#4e575c;font-size:11px;font-weight:800}.status-pill.ok{background:#dcefe3;color:#236d42}.status-pill.warn{background:#fff0c2;color:#775c00}.status-pill.bad{background:#f8dfdc;color:#9c332a}
+    .route-list{display:flex;flex-direction:column;gap:7px;max-height:62vh;overflow:auto;padding-right:3px}.route-item{display:flex;align-items:center;gap:11px;width:100%;border:1px solid #c5cbce;background:#fff;border-radius:9px;padding:9px;text-align:left}.route-item:hover,.route-item.selected{border-color:#b28e00;background:#fff9d8}.route-chip{background:var(--yellow);color:#111;font-weight:1000;min-width:55px;height:39px;display:grid;place-items:center;border-radius:5px;font-size:17px}.route-info{min-width:0;flex:1}.route-info b{display:block;font-size:13px}.route-info small{display:block;color:#70787d;font-size:11px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.route-mode{font-size:9px;text-transform:uppercase;color:#737c80;font-weight:900}
+    .sign-wrap{background:#aeb5b8;border:1px solid #90999e;padding:10px;border-radius:9px;box-shadow:0 9px 24px #15191c20}.sign{background:#e8ebec;border:2px solid #777f84;min-height:410px;display:flex;flex-direction:column}.sign-head{background:#d9dddf;border-bottom:2px solid #aab1b4;padding:18px;display:flex;align-items:center;gap:17px}.line-number{background:var(--yellow);color:#111;min-width:94px;height:78px;display:grid;place-items:center;font-size:48px;line-height:1;font-weight:1000;border:2px solid #151719;border-radius:3px}.destination{min-width:0;flex:1}.eyebrow{font-size:10px;letter-spacing:.17em;font-weight:900;color:#6a7378}.destination h2{font-size:clamp(21px,3vw,34px);margin:5px 0 0;line-height:1.1;overflow-wrap:anywhere}.sign-tag{background:#272b2e;color:var(--yellow);font-weight:900;font-size:11px;padding:8px 10px;border-radius:3px}.stop-list{padding:7px 18px;flex:1}.stop-row{display:grid;grid-template-columns:38px minmax(0,1fr) 90px;gap:11px;align-items:center;min-height:57px;border-bottom:1px solid #b9c0c3;padding:7px 0}.stop-row:last-child{border-bottom:0}.stop-index{color:#697277;font-size:13px;font-weight:900}.stop-name{font-size:clamp(15px,1.7vw,20px);font-weight:800;overflow-wrap:anywhere}.stop-time{text-align:right;font-size:15px;font-weight:1000;color:#272b2e;white-space:nowrap}.sign-foot{background:#d6dbdd;border-top:2px solid #aab1b4;padding:9px 14px;display:flex;justify-content:space-between;gap:10px;color:#687177;font-size:9px;letter-spacing:.1em;font-weight:900}.empty-screen{padding:55px 18px;text-align:center;color:#6c757a;font-weight:700}
+    .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:15px}.stat{background:#f5f6f6;border:1px solid var(--line);border-radius:10px;padding:13px}.stat strong{display:block;font-size:25px;margin-bottom:4px}.stat small{font-size:10px;color:#727b80;font-weight:900;text-transform:uppercase;letter-spacing:.1em}
+    #map{height:590px;border:1px solid #adb6ba;border-radius:10px;z-index:1}.map-legend{display:flex;gap:15px;flex-wrap:wrap;margin:9px 0 0;font-size:11px;color:#596268}.legend-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;background:#d1a900}.legend-dot.vehicle{background:#2688d5}.legend-dot.stop{background:#25292d}
+    .custom-grid{display:grid;grid-template-columns:minmax(250px,.8fr) minmax(0,1.2fr);gap:15px}.custom-card{background:#fff;border:1px solid #c4cbce;border-radius:9px;padding:12px;margin-bottom:8px}.custom-card strong{font-size:15px}.custom-card p{font-size:12px;color:#687177;margin:5px 0}.data-source{border-left:4px solid var(--yellow2);padding:10px 12px;background:#fff;margin:8px 0;border-radius:0 8px 8px 0;font-size:13px}.data-source a{color:#3c5667;font-weight:800}.notice{background:#fff1c5;border:1px solid #e6ca68;padding:12px;border-radius:8px;color:#6b5400;font-size:12px;line-height:1.5}.error{background:#f8dfdc;border:1px solid #dba39e;color:#8c2e27;padding:12px;border-radius:8px;font-size:12px;line-height:1.5}.success{background:#dcefe3;border:1px solid #a8d2b6;color:#236d42;padding:12px;border-radius:8px;font-size:12px;line-height:1.5}
+    .mobile-nav{display:none}.hidden{display:none!important}.file-label{display:inline-flex;align-items:center;gap:7px}.file-label input{max-width:210px;font-size:11px}.loading{padding:18px;text-align:center;color:#6b7479}.footer-note{font-size:10px;color:#70797e;margin:13px 2px 30px;line-height:1.5}
+    @media(max-width:980px){.layout{grid-template-columns:1fr;padding:12px}.sidebar{display:none}.grid-2,.custom-grid{grid-template-columns:1fr}.route-list{max-height:260px}.app-header{height:60px;padding:0 13px}.layout{padding-bottom:90px}.mobile-nav{display:flex;position:fixed;z-index:600;bottom:0;left:0;right:0;background:#202428;border-top:3px solid var(--yellow);padding:7px 4px calc(7px + env(safe-area-inset-bottom));justify-content:space-around}.mobile-nav button{background:transparent;border:0;color:#dfe3e5;font-size:10px;font-weight:800;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:55px}.mobile-nav button.active{color:var(--yellow)}.mobile-nav span{font-size:19px}.page-head h1{font-size:22px}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.sign{min-height:360px}.sign-head{padding:12px;gap:10px}.line-number{min-width:72px;height:65px;font-size:38px}.sign-tag{display:none}.stop-list{padding:5px 12px}.stop-row{grid-template-columns:25px minmax(0,1fr) 72px;min-height:52px;gap:7px}.stop-name{font-size:15px}.stop-time{font-size:13px}.sign-foot{font-size:8px}#map{height:440px}}
+    @media(max-width:430px){.header-right{font-size:10px}.brand{gap:8px;font-size:12px}.brand-mark{width:33px;height:33px}.page-head{align-items:flex-start;flex-direction:column}.panel{padding:13px}.controls{grid-template-columns:1fr}.field.full{grid-column:auto}.sign-wrap{padding:5px}.sign{min-height:335px}.sign-head{padding:10px}.line-number{min-width:65px;height:59px;font-size:34px}.destination h2{font-size:20px}.stop-row{min-height:48px}.stop-index{font-size:11px}.stop-name{font-size:14px}.stop-time{font-size:12px}.sign-foot{padding:7px;font-size:7px;letter-spacing:.04em}}
+  </style>
 </head>
 <body>
-<header><div class="head"><div><div class="brand">EMULATOR • TRANSPORT GZM</div><h1>SIP — panel sterowania</h1></div><span class="pill">wersja testowa</span></div></header>
-<main>
-<section class="panel controlpanel">
-<h2>Panel sterowania</h2>
-<div class="route-filters" aria-label="Źródła linii">
-<label class="check"><input type="checkbox" id="showGzm" checked> Normalne linie GZM</label>
-<label class="check"><input type="checkbox" id="showCustom" checked> Własne trasy ★</label>
+<header class="app-header">
+  <div class="brand"><div class="brand-mark">GZM</div><div>EMULATOR SIP<small>TRANSPORT GZM · TABLICA + PANEL STEROWANIA</small></div></div>
+  <div class="header-right"><span class="live-dot" id="headerDot"></span><span id="headerStatus">Łączenie z danymi…</span></div>
+</header>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="side-title">PANEL STEROWANIA</div>
+    <button class="nav-btn active" data-page="screen"><span>▣</span>Tablica SIP</button>
+    <button class="nav-btn" data-page="routes"><span>☷</span>Linie i warianty</button>
+    <button class="nav-btn" data-page="map"><span>⌖</span>Mapa</button>
+    <button class="nav-btn" data-page="custom"><span>＋</span>Własne linie</button>
+    <button class="nav-btn" data-page="data"><span>◉</span>Dane i pojazdy</button>
+    <div class="side-foot">Wersja 1.0<br>Układ mobilny i komputerowy<br>Dane GTFS: CC BY 4.0</div>
+  </aside>
+  <main class="main">
+    <section class="page active" id="page-screen">
+      <div class="page-head"><div><h1>Tablica pasażerska</h1><div class="sub">Podgląd ekranu SIP i wybór rzeczywistej linii oraz kursu.</div></div><span class="status-pill" id="dataPill">Ładowanie danych</span></div>
+      <div class="grid-2">
+        <div class="panel">
+          <h2>Sterowanie tablicą</h2>
+          <div class="controls">
+            <div class="field full"><label for="lineSearch">Szukaj linii lub kierunku</label><input id="lineSearch" placeholder="np. 35, Katowice, Sosnowiec"></div>
+            <div class="field"><label for="modeFilter">Rodzaj transportu</label><select id="modeFilter"><option value="bus">Autobusy</option><option value="all">Wszystkie</option><option value="tram">Tramwaje</option></select></div>
+            <div class="field"><label for="lineSelect">Wybrana linia</label><select id="lineSelect"><option value="">Ładowanie…</option></select></div>
+            <div class="field full"><label for="variantSelect">Wariant / kierunek</label><select id="variantSelect" disabled><option>Najpierw wybierz linię</option></select></div>
+            <div class="field"><label for="serviceDate">Dzień rozkładu</label><input id="serviceDate" type="date"></div>
+            <div class="field"><label for="tripSelect">Kurs z rozkładu</label><select id="tripSelect" disabled><option>Wybierz wariant</option></select></div>
+          </div>
+          <div class="btn-row"><button class="btn" id="reloadRoutes">Odśwież listę linii</button><button class="btn ghost" id="refreshFeed">Pobierz aktualne GTFS</button></div>
+          <p class="tiny">Na ekranie tablicy nie wyświetlam godzin odjazdu. Pokazywany jest narastający czas przejazdu od pierwszego przystanku, wyliczony z wybranego kursu GTFS.</p>
+        </div>
+        <div class="panel">
+          <h2>Podgląd wyświetlacza</h2>
+          <div class="sign-wrap"><div class="sign">
+            <div class="sign-head"><div class="line-number" id="screenLine">—</div><div class="destination"><div class="eyebrow">KIERUNEK JAZDY</div><h2 id="screenHead">Wybierz linię z panelu</h2></div><div class="sign-tag">SIP GZM</div></div>
+            <div class="stop-list" id="screenStops"><div class="empty-screen">Po załadowaniu danych wybierz linię, kierunek i kurs.</div></div>
+            <div class="sign-foot"><span>TRANSPORT GZM · TABLICA PASAŻERSKA</span><span id="screenFoot">DANE ROZKŁADOWE</span></div>
+          </div></div>
+          <div class="tiny" style="margin-top:8px">Minuty są liczone kumulacyjnie od pierwszego przystanku, np. 0 → +4 → +9 → +13 min.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="page-routes">
+      <div class="page-head"><div><h1>Linie i warianty</h1><div class="sub">Pełna lista linii pobrana z aktualnego pliku GTFS.</div></div><span class="status-pill" id="routeCountPill">0 linii</span></div>
+      <div class="panel">
+        <div class="controls" style="margin-bottom:12px">
+          <div class="field"><label for="routeSearch">Szukaj</label><input id="routeSearch" placeholder="Numer linii, nazwa, kierunek"></div>
+          <div class="field"><label for="routeMode">Filtr</label><select id="routeMode"><option value="all">Wszystkie środki transportu</option><option value="bus">Autobusy</option><option value="tram">Tramwaje</option></select></div>
+        </div>
+        <div class="route-list" id="allRoutes"><div class="loading">Oczekiwanie na dane GTFS…</div></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-map">
+      <div class="page-head"><div><h1>Mapa sieci i pojazdów</h1><div class="sub">Trasa wybranej linii, przystanki oraz pojazdy z publicznego kanału GTFS-RT.</div></div><span class="status-pill" id="vehiclePill">Sprawdzam pojazdy…</span></div>
+      <div class="panel"><div id="map"></div><div class="map-legend"><span><i class="legend-dot"></i>Przystanki wybranej trasy</span><span><i class="legend-dot vehicle"></i>Pojazdy na żywo</span></div><div id="vehicleList" class="tiny" style="margin-top:12px">Lista pojazdów pojawi się po pobraniu kanału live.</div><p class="tiny">Jeśli kanał pojazdów chwilowo nie odpowiada, mapa nadal pokaże przystanki wybranej trasy. Pozycje pojazdów nie są symulowane.</p></div>
+    </section>
+
+    <section class="page" id="page-custom">
+      <div class="page-head"><div><h1>Własne linie</h1><div class="sub">Dodawaj własne trasy, zapisuj je, eksportuj i importuj ponownie.</div></div><span class="status-pill">Zapis lokalny + JSON</span></div>
+      <div class="custom-grid">
+        <div class="panel">
+          <h2>Dodaj nową linię</h2>
+          <div class="controls">
+            <div class="field"><label for="customNumber">Numer linii</label><input id="customNumber" placeholder="np. 999"></div>
+            <div class="field"><label for="customDirection">Kierunek</label><input id="customDirection" placeholder="np. Katowice Dworzec"></div>
+            <div class="field full"><label for="customName">Nazwa / opis (opcjonalnie)</label><input id="customName" placeholder="Moja linia testowa"></div>
+            <div class="field full"><label for="customStops">Przystanki — po jednym w wierszu</label><textarea id="customStops" placeholder="Sosnowiec Dworzec PKP|0|50.286|19.104&#10;Sosnowiec Centrum|4|50.282|19.13&#10;Katowice Szopienice|7|50.26|19.08&#10;Katowice Dworzec|5|50.259|19.02"></textarea></div>
+          </div>
+          <p class="tiny">Format wiersza: <b>nazwa przystanku | minuty od poprzedniego | szerokość | długość</b>. Współrzędne są opcjonalne. Pierwszy przystanek powinien mieć 0 minut.</p>
+          <div class="btn-row"><button class="btn" id="addCustom">Zapisz i aktywuj linię</button><a class="btn ghost" href="/api/custom-routes/export">Eksportuj JSON</a><label class="btn ghost file-label">Importuj JSON<input id="customImport" type="file" accept=".json,application/json" hidden></label></div>
+          <div id="customMessage" style="margin-top:10px"></div>
+        </div>
+        <div class="panel">
+          <h2>Zapisane własne linie</h2>
+          <div id="customList"><div class="loading">Ładowanie…</div></div>
+          <div class="notice" style="margin-top:12px">Własne linie są zapisywane w pliku <b>data/custom_routes.json</b>. Przed przeniesieniem aplikacji lub ponownym wdrożeniem pobierz eksport JSON, a potem wczytaj go przyciskiem „Importuj JSON”.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="page-data">
+      <div class="page-head"><div><h1>Dane i pojazdy</h1><div class="sub">Kontrola źródeł, liczby rekordów i aktualizacji.</div></div><span class="status-pill" id="dataHealth">Sprawdzam…</span></div>
+      <div class="stats">
+        <div class="stat"><strong id="statRoutes">—</strong><small>Linie GTFS</small></div>
+        <div class="stat"><strong id="statStops">—</strong><small>Przystanki</small></div>
+        <div class="stat"><strong id="statTrips">—</strong><small>Kursy</small></div>
+        <div class="stat"><strong id="statVehicles">—</strong><small>Pojazdy live</small></div>
+      </div>
+      <div class="panel">
+        <h2>Stan danych</h2><div id="dataDetails" class="tiny">Oczekiwanie na dane…</div>
+        <div class="btn-row"><button class="btn" id="refreshData">Aktualizuj rozkłady GZM</button><label class="btn ghost file-label">Wczytaj plik GTFS ZIP<input id="gtfsImport" type="file" accept=".zip,application/zip" hidden></label></div>
+        <div id="dataMessage" style="margin-top:10px"></div>
+      </div>
+      <div class="panel">
+        <h2>Źródła danych</h2>
+        <div class="data-source"><b>Rozkłady, linie, przystanki i kursy:</b><br><a href="https://otwartedane.metropoliagzm.pl/dataset/rozklady-jazdy-i-lokalizacja-przystankow-gtfs-wersja-rozszerzona" target="_blank" rel="noopener">Oficjalny zbiór GTFS ZTM / Transport GZM</a> — licencja Creative Commons Attribution.</div>
+        <div class="data-source"><b>Pozycje pojazdów i aktualizacje na żywo:</b><br><a href="https://otwartedane.metropoliagzm.pl/dataset/rozklady-jazdy-i-lokalizacja-przystankow-gtfs-rt" target="_blank" rel="noopener">Publiczny kanał GTFS Realtime GZM</a>. Dostępność zależy od działania źródła.</div>
+        <div class="data-source"><b>Mapa:</b><br><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> — dane mapowe społeczności OSM.</div>
+        <p class="tiny">To nieoficjalny, niekomercyjny emulator. Nie jest częścią systemu Transport GZM. Dane rozkładowe mogą nie obejmować nagłych zmian, objazdów ani komunikatów publikowanych poza GTFS.</p>
+      </div>
+    </section>
+  </main>
 </div>
-<div class="controls">
-<div><label for="route">Linia</label><select id="route"><option>Ładowanie linii…</option></select></div>
-<div><label for="trip">Kierunek / kurs</label><select id="trip" disabled><option>Najpierw wybierz linię</option></select></div>
-</div>
-<div class="btnrow"><button id="prev">← Poprzedni przystanek</button><button id="next">Następny przystanek →</button></div>
-<div class="btnrow"><button id="first">Początek trasy</button><button id="last">Koniec trasy</button></div>
-<p class="note">Sterowanie zmienia wyłącznie ekran emulatora. Nie steruje prawdziwym autobusem ani tablicą w pojeździe.</p>
-<div id="status" class="status">Uruchamianie…</div>
-</section>
-<section class="panel screenpanel">
-<h2>Podgląd ekranu pasażerskiego</h2>
-<div class="screen">
-<div class="screen-top"></div>
-<div class="route-head"><div class="route-num" id="screenRoute">—</div><div class="destination"><small>Tu jedzie:</small><strong id="screenDest">Wybierz kurs</strong></div></div>
-<div class="stoplist" id="stoplist"><div class="stop"><time>—</time><div class="name">Wybierz linię i kurs w panelu</div></div></div>
-<div class="screen-foot" id="screenFoot">Źródło: GTFS ZTM GZM</div>
-</div>
-<p class="tiny" id="screenMeta">Dane rozkładowe mogą nie uwzględniać bieżących zmian.</p>
-</section>
-<section class="panel custompanel">
-<h2>Własne trasy</h2>
-<p class="note">Utwórz własną linię testową. Wpisz każdy przystanek w osobnym wierszu. Możesz podać godzinę, np. <strong>08:15 | Sosnowiec Dworzec</strong>. Trasy są zapisywane na serwerze emulatora.</p>
-<form id="customForm">
-<div style="margin-bottom:10px"><label for="customName">Numer / nazwa linii</label><input id="customName" maxlength="24" placeholder="np. TEST 1" required></div>
-<div style="margin-bottom:10px"><label for="customDirection">Kierunek / nazwa trasy</label><input id="customDirection" maxlength="100" placeholder="np. Sosnowiec — Katowice" required></div>
-<div><label for="customStops">Przystanki (minimum 2)</label><textarea id="customStops" placeholder="08:15 | Sosnowiec Dworzec
-08:20 | Pogoń Akademiki
-08:35 | Katowice Dworzec" required></textarea></div>
-<button class="primary" type="submit" style="margin-top:10px">＋ Dodaj własną trasę</button>
-</form>
-<div id="customStatus" class="note" style="margin-top:8px" aria-live="polite"></div>
-<div id="customList"></div>
-</section>
-<section class="panel allstops-panel">
-<h2>Wszystkie przystanki GZM</h2>
-<p class="note">Pełna lista przystanków pobrana z aktualnego pliku GTFS ZTM GZM. Wpisz nazwę lub kod, aby wyszukać przystanek.</p>
-<div style="margin-bottom:8px"><label for="stopSearch">Szukaj przystanku</label><input id="stopSearch" type="search" placeholder="np. Katowice, Sosnowiec, Dworzec…"></div>
-<div class="data-row"><span>Przystanki na liście</span><strong id="stopCount">Ładowanie…</strong></div>
-<div id="allStopsStatus" class="note" aria-live="polite">Pobieram listę przystanków…</div>
-<div id="allStopsList" class="all-stops-list"></div>
-</section>
-<section class="panel livepanel">
-<h2>Dane pojazdów na żywo</h2>
-<div class="data-row"><span>Odczyt pozycji</span><strong id="liveCount">—</strong></div>
-<div id="liveInfo" class="note">Sprawdzam dostępność kanału GTFS-Realtime…</div>
-<button id="refreshLive" style="margin-top:10px">Odśwież dane na żywo</button>
-<p class="tiny">Pozycje pojazdów są niezależne od ręcznie wybranego kursu. Kanał może czasowo nie odpowiadać.</p>
-</section>
-</main>
+<nav class="mobile-nav">
+  <button class="active" data-page="screen"><span>▣</span>Tablica</button>
+  <button data-page="routes"><span>☷</span>Linie</button>
+  <button data-page="map"><span>⌖</span>Mapa</button>
+  <button data-page="custom"><span>＋</span>Własne</button>
+  <button data-page="data"><span>◉</span>Dane</button>
+</nav>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
 const $ = id => document.getElementById(id);
-let routes=[], stops=[], current=0, selectedRoute=null;
-let customRoutes=[], allRoutes=[], allGzmStops=[];
-function status(msg, bad=false){$('status').textContent=msg;$('status').className=bad?'status error':'status'}
-async function getJSON(url, options={}){const r=await fetch(url,options);const j=await r.json();if(!r.ok)throw new Error(j.details||j.error||'Błąd serwera');return j}
-async function refreshRoutes(preferId=null){
- const data=await getJSON('/api/routes');allRoutes=data.routes;
- applyRouteFilters(preferId);
+const state = {routes:[], selected:null, detail:null, variant:null, trip:null, stops:[], map:null, routeLayer:null, stopLayer:null, vehicleLayer:null, vehicles:[]};
+const today = new Date(); $('serviceDate').value = new Date(today.getTime()-today.getTimezoneOffset()*60000).toISOString().slice(0,10);
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function message(id, text, type='notice'){ $(id).innerHTML = text ? `<div class="${type}">${esc(text)}</div>` : ''; }
+async function api(url, options={}){const r=await fetch(url,options);let data={};try{data=await r.json()}catch(e){}if(!r.ok)throw new Error(data.error||`Błąd HTTP ${r.status}`);return data;}
+function switchPage(name){document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id===`page-${name}`));document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===name));if(name==='map'){initMap();setTimeout(()=>state.map&&state.map.invalidateSize(),120);refreshVehicles();}if(name==='custom')loadCustom();if(name==='data')refreshStatus();}
+document.querySelectorAll('[data-page]').forEach(b=>b.addEventListener('click',()=>switchPage(b.dataset.page)));
+function modeForFilter(mode){return mode==='tram'?'tram':mode==='bus'?'bus':'all';}
+async function loadRoutes(){
+  try{
+    const mode=modeForFilter($('modeFilter').value);const data=await api(`/api/routes?mode=${mode}`);state.routes=data.routes||[];
+    renderRouteList();renderAllRoutes();
+    $('routeCountPill').textContent=`${state.routes.length} linii`;
+    if(!state.selected&&state.routes.length){const first=state.routes.find(r=>r.route_type===3)||state.routes[0];await selectRoute(first.id);}
+    else if(state.selected&&!state.routes.some(r=>r.id===state.selected)){state.selected=null;if(state.routes.length)await selectRoute(state.routes[0].id);}
+  }catch(e){$('lineSelect').innerHTML='<option value="">Brak danych</option>';message('dataMessage',e.message,'error');}
 }
-function applyRouteFilters(preferId=null){
- const previous=preferId || $('route').value;
- const showGzm=$('showGzm').checked, showCustom=$('showCustom').checked;
- routes=allRoutes.filter(r=>r.custom?showCustom:showGzm);
- $('route').innerHTML='';
- routes.forEach(r=>{const o=document.createElement('option');o.value=r.id;o.textContent=(r.custom?'★ ':'')+r.short_name+(r.long_name?' — '+r.long_name:'');$('route').appendChild(o)});
- if(previous && routes.some(r=>r.id===previous))$('route').value=previous;
- else if(routes.length)$('route').value=routes[0].id;
- if(!routes.length){
-   $('trip').innerHTML='<option>Włącz normalne linie GZM lub własne trasy</option>';$('trip').disabled=true;
-   selectedRoute=null;stops=[];render();
- }
+function renderRouteList(){
+  const s=$('lineSearch').value.toLowerCase().trim();const list=state.routes.filter(r=>(`${r.short_name} ${r.long_name} ${r.mode}`).toLowerCase().includes(s));
+  $('lineSelect').innerHTML=list.map(r=>`<option value="${esc(r.id)}" ${r.id===state.selected?'selected':''}>${esc(r.short_name)} · ${esc(r.long_name||r.mode)}</option>`).join('')||'<option value="">Brak pasujących linii</option>';
 }
-async function init(){
- try{
-  await refreshRoutes();
-  status(`Załadowano ${routes.length} widocznych linii. Możesz przełączać linie GZM i własne trasy.`);
-  if(routes.length){selectedRoute=$('route').value;await loadTrips()}
- }catch(e){status('Nie udało się pobrać danych: '+e.message,true)}
- loadLive();
+function renderAllRoutes(){
+  const s=$('routeSearch').value.toLowerCase().trim();const list=state.routes.filter(r=>(`${r.short_name} ${r.long_name} ${r.mode}`).toLowerCase().includes(s));
+  $('allRoutes').innerHTML=list.map(r=>`<button class="route-item ${r.id===state.selected?'selected':''}" data-route="${esc(r.id)}"><span class="route-chip">${esc(r.short_name)}</span><span class="route-info"><b>${esc(r.long_name||'Kierunek w danych GTFS')}</b><small>${esc(r.mode)} · ${Number(r.trip_count||0).toLocaleString('pl-PL')} kursów${r.custom?' · linia własna':''}</small></span><span class="route-mode">${r.custom?'WŁASNA':r.mode.toUpperCase()}</span></button>`).join('')||'<div class="loading">Nie znaleziono linii.</div>';
+  document.querySelectorAll('[data-route]').forEach(b=>b.addEventListener('click',()=>{selectRoute(b.dataset.route);switchPage('screen');}));
 }
-async function loadTrips(){
- selectedRoute=$('route').value;$('trip').disabled=true;$('trip').innerHTML='<option>Ładowanie kursów…</option>';
- try{
-  const data=await getJSON('/api/trips/'+encodeURIComponent(selectedRoute));
-  $('trip').innerHTML='';
-  data.trips.forEach(t=>{const o=document.createElement('option');o.value=t.id;o.textContent=t.headsign+(t.short_name?' • '+t.short_name:'');$('trip').appendChild(o)});
-  if(!data.trips.length){$('trip').innerHTML='<option>Brak kursów dla dzisiejszego dnia</option>';stops=[];render();status('Nie znaleziono kursów dla tej linii na dziś.',true);return}
-  $('trip').disabled=false;await loadTrip();status(`Kursy z rozkładu na ${data.date}.`);
- }catch(e){status('Błąd pobierania kursów: '+e.message,true)}
+async function selectRoute(id){
+  if(!id)return;state.selected=id;state.detail=null;state.variant=null;state.trip=null;state.stops=[];renderRouteList();renderAllRoutes();
+  $('screenStops').innerHTML='<div class="loading">Pobieranie trasy…</div>';
+  try{
+    const detail=await api(`/api/route/${encodeURIComponent(id)}?date=${$('serviceDate').value}`);state.detail=detail;
+    $('screenLine').textContent=detail.route.short_name||'—';
+    $('variantSelect').disabled=false;
+    $('variantSelect').innerHTML=(detail.variants||[]).map((v,i)=>`<option value="${esc(v.id)}">${esc(v.headsign)} · ${v.stop_count} przyst. · ${v.trip_count} kursów</option>`).join('')||'<option value="">Brak wariantów</option>';
+    if(detail.custom){$('tripSelect').disabled=true;$('tripSelect').innerHTML='<option>Linia własna</option>';const v=detail.variants[0];state.variant=v;state.stops=v.sample_stops||[];renderScreen();drawRouteOnMap();return;}
+    if(detail.variants&&detail.variants.length)await selectVariant(detail.variants[0].id);else{$('screenHead').textContent='Brak wariantów trasy';$('screenStops').innerHTML='<div class="empty-screen">W tym rekordzie GTFS nie znaleziono kursów.</div>';}
+  }catch(e){$('screenStops').innerHTML=`<div class="empty-screen">${esc(e.message)}</div>`;}
 }
-async function loadTrip(){
- try{const d=await getJSON('/api/trip/'+encodeURIComponent($('trip').value));stops=d.stops;current=0;render()}
- catch(e){status('Błąd pobierania trasy: '+e.message,true)}
+async function selectVariant(id){
+  if(!state.detail)return;const v=state.detail.variants.find(x=>x.id===id);if(!v)return;state.variant=v;state.trip=null;
+  $('tripSelect').disabled=false;
+  const deps=v.departures||[];
+  $('tripSelect').innerHTML=deps.map((d,i)=>`<option value="${esc(d.trip_id)}">${esc(d.departure)} · kurs ${i+1}</option>`).join('')||'<option value="">Brak kursów w tym dniu</option>';
+  const now=new Date();const nowSec=now.getHours()*3600+now.getMinutes()*60;const todayValue=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);const preferred=($('serviceDate').value===todayValue?deps.find(d=>d.departure_seconds>=nowSec):null)||deps[0];const tripId=(preferred&&preferred.trip_id)||v.sample_trip_id;
+  if(tripId)await selectTrip(tripId);else{state.stops=v.sample_stops||[];renderScreen();drawRouteOnMap();}
 }
-function fmtTime(t){return t||'—'}
-function render(){
- const r=routes.find(x=>x.id===selectedRoute);
- $('screenRoute').textContent=r?r.short_name:'—';
- const tripOpt=$('trip').selectedOptions[0];
- $('screenDest').textContent=tripOpt?tripOpt.textContent:'Wybierz kurs';
- if(!stops.length){$('stoplist').innerHTML='<div class="stop"><time>—</time><div class="name">Brak danych o przystankach</div></div>';return}
- current=Math.max(0,Math.min(current,stops.length-1));
- $('stoplist').innerHTML='';
- // Show current and next four stops, similar to onboard displays.
- stops.slice(current, current+5).forEach((s,i)=>{
-  const row=document.createElement('div');row.className='stop'+(i===0?' current':'');
-  const time=document.createElement('time');time.textContent=fmtTime(s.arrival);
-  const name=document.createElement('div');name.className='name';name.textContent=s.name;
-  row.append(time,name);$('stoplist').appendChild(row);
- });
- $('screenFoot').textContent='Aktualny przystanek: '+stops[current].name;
- $('screenMeta').textContent=`Przystanek ${current+1} z ${stops.length} • czasy według rozkładu GTFS`;
+async function selectTrip(id){
+  if(!id){state.stops=state.variant?.sample_stops||[];renderScreen();return;}
+  try{const data=await api(`/api/trip/${encodeURIComponent(id)}`);state.trip=id;state.stops=data.stops||[];renderScreen();drawRouteOnMap();}
+  catch(e){state.stops=state.variant?.sample_stops||[];renderScreen();message('dataMessage',e.message,'error');}
 }
-$('route').addEventListener('change',loadTrips);
-$('trip').addEventListener('change',loadTrip);
-$('next').addEventListener('click',()=>{if(stops.length){current=Math.min(current+1,stops.length-1);render()}});
-$('prev').addEventListener('click',()=>{if(stops.length){current=Math.max(0,current-1);render()}});
-$('first').addEventListener('click',()=>{current=0;render()});
-$('last').addEventListener('click',()=>{current=Math.max(0,stops.length-1);render()});
-
-async function refreshCustomList(){
- try{const data=await getJSON('/api/custom-routes');customRoutes=data.routes;$('customList').innerHTML='';
-  if(!customRoutes.length){$('customList').innerHTML='<p class="tiny">Nie dodano jeszcze własnych tras.</p>';return}
-  customRoutes.forEach(r=>{const item=document.createElement('div');item.className='custom-item';const head=document.createElement('div');head.className='custom-item-head';const title=document.createElement('span');title.textContent=r.name+' — '+r.direction;const del=document.createElement('button');del.type='button';del.textContent='Usuń';del.addEventListener('click',async()=>{if(!confirm('Usunąć trasę '+r.name+'?'))return;try{await getJSON('/api/custom-routes/'+encodeURIComponent(r.id),{method:'DELETE'});await refreshCustomList();await refreshRoutes();if(routes.length){$('route').value=routes[0].id;await loadTrips()}else{stops=[];render()}$('customStatus').textContent='Usunięto trasę.'}catch(e){$('customStatus').textContent='Błąd: '+e.message}});head.append(title,del);const detail=document.createElement('div');detail.className='tiny';detail.textContent=r.stops.length+' przystanków';item.append(head,detail);item.addEventListener('dblclick',async()=>{const id='custom:'+r.id;await refreshRoutes(id);$('route').value=id;await loadTrips()});$('customList').appendChild(item)});
- }catch(e){$('customStatus').textContent='Nie udało się wczytać własnych tras: '+e.message}
+function renderScreen(){
+  const v=state.variant;const head=(v&&v.headsign)||'Wybierz kierunek';$('screenHead').textContent=head;
+  if(!state.stops.length){$('screenStops').innerHTML='<div class="empty-screen">Brak przystanków do wyświetlenia.</div>';return;}
+  $('screenStops').innerHTML=state.stops.slice(0,9).map((s,i)=>`<div class="stop-row"><span class="stop-index">${String(i+1).padStart(2,'0')}</span><span class="stop-name">${esc(s.name)}</span><span class="stop-time">${i===0?'0 MIN':`+${Number(s.minutes_from_start||0)} MIN`}</span></div>`).join('');
+  $('screenFoot').textContent=state.detail?.custom?'LINIA WŁASNA':'DANE GTFS';
+  if(state.map&&document.getElementById('page-map').classList.contains('active'))drawRouteOnMap();
 }
-$('customForm').addEventListener('submit',async ev=>{
- ev.preventDefault();const name=$('customName').value.trim(),direction=$('customDirection').value.trim();
- const stops=$('customStops').value.split('\n').map(line=>{line=line.trim();if(!line)return null;const match=line.match(/^(\d{1,2}:\d{2}(?::\d{2})?)\s*[|—-]\s*(.+)$/);return match?{time:match[1],name:match[2].trim()}:{time:'',name:line}}).filter(Boolean);
- $('customStatus').textContent='Zapisuję trasę…';
- try{const response=await fetch('/api/custom-routes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,direction,stops})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Nie udało się zapisać trasy');
-  $('customForm').reset();await refreshCustomList();await refreshRoutes('custom:'+data.route.id);await loadTrips();$('customStatus').textContent='Dodano trasę „'+data.route.name+'”. Możesz nią sterować w panelu u góry.';status('Dodano własną trasę: '+data.route.name+'.');
- }catch(e){$('customStatus').textContent='Błąd: '+e.message}
+function initMap(){
+  if(state.map||!window.L)return;
+  state.map=L.map('map').setView([50.2649,19.0238],10);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(state.map);
+  state.routeLayer=L.layerGroup().addTo(state.map);state.stopLayer=L.layerGroup().addTo(state.map);state.vehicleLayer=L.layerGroup().addTo(state.map);
+}
+function drawRouteOnMap(){
+  if(!state.map||!state.stops.length)return;state.routeLayer.clearLayers();state.stopLayer.clearLayers();
+  const pts=state.stops.filter(s=>Number.isFinite(Number(s.lat))&&Number.isFinite(Number(s.lon))).map(s=>[Number(s.lat),Number(s.lon)]);
+  state.stops.forEach((s,i)=>{if(s.lat!==null&&s.lon!==null&&s.lat!==undefined&&s.lon!==undefined&&Number.isFinite(Number(s.lat))&&Number.isFinite(Number(s.lon)))L.circleMarker([Number(s.lat),Number(s.lon)],{radius:6,color:'#202428',weight:2,fillColor:'#ffd500',fillOpacity:1}).bindPopup(`<b>${i+1}. ${esc(s.name)}</b><br>+${Number(s.minutes_from_start||0)} min`).addTo(state.stopLayer);});
+  if(pts.length>1){L.polyline(pts,{color:'#d0a900',weight:5,opacity:.9}).addTo(state.routeLayer);state.map.fitBounds(pts,{padding:[25,25],maxZoom:14});}else if(pts.length===1){state.map.setView(pts[0],14);}
+}
+async function refreshVehicles(){
+  try{const data=await api('/api/vehicles');state.vehicles=data.vehicles||[];$('vehiclePill').textContent=data.available?`${data.count} pojazdów na żywo`:'Kanał live niedostępny';$('vehiclePill').className='status-pill '+(data.available?'ok':'warn');$('statVehicles').textContent=data.available?data.count:'—';
+    if(state.map){state.vehicleLayer.clearLayers();state.vehicles.forEach(v=>{if(Number.isFinite(v.lat)&&Number.isFinite(v.lon))L.circleMarker([v.lat,v.lon],{radius:7,color:'#07558b',weight:2,fillColor:'#2688d5',fillOpacity:1}).bindPopup(`<b>Linia ${esc(v.line||'—')}</b><br>${esc(v.label||v.id||'Pojazd')}`).addTo(state.vehicleLayer);});}
+    $('vehicleList').innerHTML=data.available?(state.vehicles.slice(0,80).map(v=>`<span class="status-pill" style="margin:3px">Linia ${esc(v.line||'—')} · ${esc(v.label||v.id||'pojazd')} · ${Number(v.lat).toFixed(5)}, ${Number(v.lon).toFixed(5)}</span>`).join('')||'Kanał działa, ale nie zwrócił aktualnie pozycji pojazdów.'):`Kanał pojazdów niedostępny: ${esc(data.error||'brak szczegółów')}`;
+  }catch(e){$('vehiclePill').textContent='Błąd kanału live';$('vehiclePill').className='status-pill warn';}
+}
+async function refreshStatus(){
+  try{
+    const s=await api('/api/status');
+    $('headerStatus').textContent=s.ready?`${s.routes.toLocaleString('pl-PL')} linii · ${s.live_available?s.live_vehicles+' pojazdów live':'kanał live offline'}`:(s.loading?'Pobieranie danych GZM…':'Brak danych GTFS');
+    $('headerDot').style.background=s.ready?'#4bd17a':'#e6b900';
+    $('dataPill').textContent=s.ready?'GTFS załadowany':s.loading?'Pobieranie GTFS':'Brak GTFS';$('dataPill').className='status-pill '+(s.ready?'ok':s.loading?'warn':'bad');
+    $('statRoutes').textContent=s.routes?.toLocaleString('pl-PL')||'0';$('statStops').textContent=s.stops?.toLocaleString('pl-PL')||'0';$('statTrips').textContent=s.trips?.toLocaleString('pl-PL')||'0';$('statVehicles').textContent=s.live_available?s.live_vehicles:'—';
+    $('dataHealth').textContent=s.ready?'Dane rozkładowe dostępne':'Dane niedostępne';$('dataHealth').className='status-pill '+(s.ready?'ok':'warn');
+    $('dataDetails').innerHTML=`<b>Źródło:</b> ${esc(s.source||'—')}<br><b>Ostatnia aktualizacja lokalnej bazy:</b> ${esc(s.updated_at||'brak')}<br><b>Wersja GTFS:</b> ${esc(s.feed_info?.feed_version||'niepodana')}<br><b>Zakres dat w pliku:</b> ${esc(s.feed_info?.feed_start_date||'—')} – ${esc(s.feed_info?.feed_end_date||'—')}<br><b>Rekordy:</b> ${s.routes||0} tras, ${s.stops||0} przystanków, ${s.trips||0} kursów, ${s.stop_times||0} czasów przystankowych<br><b>GTFS-RT:</b> ${s.live_available?'dostępny':'niedostępny'}${s.live_error?` · ${esc(s.live_error)}`:''}<br><b>Biblioteka GTFS-RT:</b> ${s.realtime_library?'zainstalowana':'brak'}${s.error?`<br><b>Błąd:</b> ${esc(s.error)}`:''}`;
+    if(!s.ready&&s.error)message('dataMessage',s.error,'error');
+  }catch(e){$('headerStatus').textContent='Błąd połączenia';message('dataMessage',e.message,'error');}
+}
+async function loadCustom(){
+  try{const d=await api('/api/custom-routes');const items=d.routes||[];$('customList').innerHTML=items.map(x=>`<div class="custom-card"><strong><span class="route-chip" style="display:inline-grid;vertical-align:middle;min-width:42px;height:29px;font-size:13px;margin-right:7px">${esc(x.short_name)}</span>${esc(x.headsign)}</strong><p>${x.stops.length} przystanków · własna linia</p><div class="btn-row"><button class="btn small" onclick="activateCustom('${esc(x.id)}')">Aktywuj na tablicy</button><button class="btn small danger" onclick="deleteCustom('${esc(x.id)}')">Usuń</button></div></div>`).join('')||'<div class="loading">Nie dodano jeszcze własnych linii.</div>';
+  }catch(e){$('customList').textContent=e.message;}
+}
+window.activateCustom=async id=>{await loadRoutes();await selectRoute('custom:'+id);switchPage('screen');};
+window.deleteCustom=async id=>{if(!confirm('Usunąć tę własną linię?'))return;try{await api(`/api/custom-routes/${encodeURIComponent(id)}`,{method:'DELETE'});if(state.selected==='custom:'+id){state.selected=null;state.detail=null;state.stops=[];renderScreen();}await loadCustom();await loadRoutes();message('customMessage','Usunięto linię.','success');}catch(e){message('customMessage',e.message,'error');}};
+$('addCustom').addEventListener('click',async()=>{
+  const stops=$('customStops').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean).map((line,i)=>{const p=line.split('|').map(x=>x.trim());return{name:p[0],minutes_from_previous:Number(p[1]||0),lat:p[2]?Number(p[2]):null,lon:p[3]?Number(p[3]):null};});
+  try{const d=await api('/api/custom-routes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({short_name:$('customNumber').value,headsign:$('customDirection').value,name:$('customName').value,stops})});message('customMessage','Linia została zapisana i dodana do listy.','success');$('customNumber').value='';$('customDirection').value='';$('customName').value='';$('customStops').value='';await loadCustom();await loadRoutes();await selectRoute('custom:'+d.route.id);switchPage('screen');}
+  catch(e){message('customMessage',e.message,'error');}
 });
-async function loadAllStops(){
- $('allStopsStatus').textContent='Pobieram pełną listę przystanków…';
- try{
-  const data=await getJSON('/api/stops');allGzmStops=data.stops;
-  $('stopCount').textContent=data.count.toLocaleString('pl-PL');
-  $('allStopsStatus').textContent='Źródło: '+data.source+'. Lista obejmuje przystanki występujące w pliku GTFS.';
-  renderAllStops();
- }catch(e){
-  $('stopCount').textContent='niedostępne';
-  $('allStopsStatus').textContent='Nie udało się pobrać listy: '+e.message;
- }
-}
-function renderAllStops(){
- const query=$('stopSearch').value.trim().toLocaleLowerCase('pl-PL');
- const filtered=allGzmStops.filter(s=>(s.name+' '+s.code+' '+s.id).toLocaleLowerCase('pl-PL').includes(query));
- const shown=filtered.slice(0,500);
- $('allStopsList').innerHTML='';
- shown.forEach(s=>{
-  const row=document.createElement('div');row.className='stop-entry';
-  const name=document.createElement('span');name.textContent=s.name;
-  const meta=document.createElement('small');meta.textContent=(s.code?'Kod '+s.code+' · ':'')+'ID '+s.id;
-  row.append(name,meta);$('allStopsList').appendChild(row);
- });
- if(!filtered.length){$('allStopsList').innerHTML='<p class="tiny">Brak wyników. Spróbuj wpisać inną nazwę.</p>'}
- else if(filtered.length>shown.length){
-  const note=document.createElement('p');note.className='tiny';note.textContent='Wyświetlono '+shown.length+' z '+filtered.length+' wyników. Doprecyzuj wyszukiwanie, aby znaleźć pozostałe.';$('allStopsList').appendChild(note);
- }
-}
-$('stopSearch').addEventListener('input',renderAllStops);
-$('showGzm').addEventListener('change',()=>{applyRouteFilters();if(routes.length){loadTrips()}});
-$('showCustom').addEventListener('change',()=>{applyRouteFilters();if(routes.length){loadTrips()}});
-async function loadLive(){
- $('liveInfo').textContent='Pobieram pozycje pojazdów…';
- try{const d=await getJSON('/api/realtime');$('liveCount').textContent=d.count+' pojazdów';$('liveInfo').textContent=d.count?'Kanał GTFS-Realtime odpowiada. Dane obejmują pojazdy udostępnione przez feed.':'Feed działa, ale nie zwrócił pozycji.'}
- catch(e){$('liveCount').textContent='niedostępne';$('liveInfo').textContent='Nie udało się odczytać pozycji na żywo. Spróbuj ponownie później.'}
-}
-$('refreshLive').addEventListener('click',loadLive);
-init();
-refreshCustomList();
+$('customImport').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;const fd=new FormData();fd.append('file',file);try{const d=await api('/api/custom-routes/import',{method:'POST',body:fd});message('customMessage',d.message,'success');await loadCustom();await loadRoutes();}catch(err){message('customMessage',err.message,'error');}e.target.value='';});
+async function doRefresh(){message('dataMessage','Rozpoczęto pobieranie najnowszego pliku GTFS…','notice');try{await api('/api/refresh',{method:'POST'});const timer=setInterval(async()=>{await refreshStatus();if(!$('dataDetails').textContent.includes('Pobieranie')&&!$('headerStatus').textContent.includes('Pobieranie'))clearInterval(timer);},3000);}catch(e){message('dataMessage',e.message,'error');}}
+$('refreshData').addEventListener('click',doRefresh);$('refreshFeed').addEventListener('click',doRefresh);$('reloadRoutes').addEventListener('click',async()=>{await loadRoutes();await refreshStatus();});
+$('gtfsImport').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;const fd=new FormData();fd.append('file',file);message('dataMessage','Importuję plik GTFS. Przy dużym archiwum może to potrwać…','notice');try{const d=await api('/api/import-gtfs',{method:'POST',body:fd});message('dataMessage',`Zaimportowano: ${d.counts.routes} tras, ${d.counts.stops} przystanków, ${d.counts.trips} kursów.`,'success');await refreshStatus();await loadRoutes();}catch(err){message('dataMessage',err.message,'error');}e.target.value='';});
+$('lineSearch').addEventListener('input',renderRouteList);$('routeSearch').addEventListener('input',renderAllRoutes);$('modeFilter').addEventListener('change',loadRoutes);$('routeMode').addEventListener('change',async()=>{const m=$('routeMode').value;const d=await api(`/api/routes?mode=${m}`);state.routes=d.routes||[];renderAllRoutes();$('routeCountPill').textContent=`${state.routes.length} linii`;});
+$('lineSelect').addEventListener('change',e=>selectRoute(e.target.value));$('variantSelect').addEventListener('change',e=>selectVariant(e.target.value));$('tripSelect').addEventListener('change',e=>selectTrip(e.target.value));$('serviceDate').addEventListener('change',()=>state.selected&&selectRoute(state.selected));
+(async()=>{await refreshStatus();await loadRoutes();await loadCustom();setInterval(refreshStatus,18000);setInterval(()=>{if(document.getElementById('page-map').classList.contains('active'))refreshVehicles();},12000);})();
 </script>
-</body></html>
+</body>
+</html>
