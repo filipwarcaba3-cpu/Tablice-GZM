@@ -49,11 +49,14 @@ LOAD_LOCK = threading.Lock()
 RT_LOCK = threading.Lock()
 STATE = {'ready': False, 'loading': False, 'error': None, 'source': None,
          'updated_at': None, 'feed_start_date': None, 'feed_end_date': None,
+         'stage': 'Oczekiwanie', 'attempt_started_at': None,
          'routes': 0, 'stops': 0, 'trips': 0, 'stop_times': 0}
 RT = {'at': 0.0, 'vehicles': None, 'error': 'Jeszcze nie pobrano',
       'updated_at': None, 'sample_timestamp': None, 'trip_updates': {}, 'trip_at': 0.0,
       'trip_error': None, 'trip_timestamp': None}
 LAST_REFRESH_ATTEMPT = 0.0
+RETRY_SECONDS = int(os.environ.get('SIP_RETRY_SECONDS', '90'))
+GTFS_URL = os.environ.get('SIP_GTFS_URL', '').strip()
 
 SCHEMA = '''
 PRAGMA journal_mode=DELETE;
@@ -64,12 +67,7 @@ CREATE TABLE trips(trip_id TEXT PRIMARY KEY,route_id TEXT,service_id TEXT,headsi
 CREATE TABLE stop_times(trip_id TEXT,stop_id TEXT,arrival TEXT,departure TEXT,seq INTEGER,pickup INTEGER);
 CREATE TABLE calendar(service_id TEXT PRIMARY KEY,mon INTEGER,tue INTEGER,wed INTEGER,thu INTEGER,fri INTEGER,sat INTEGER,sun INTEGER,start TEXT,end TEXT);
 CREATE TABLE calendar_dates(service_id TEXT,day TEXT,exception INTEGER);
-CREATE INDEX ix_st_stop ON stop_times(stop_id);
-CREATE INDEX ix_st_trip ON stop_times(trip_id,seq);
-CREATE INDEX ix_tr_route ON trips(route_id);
-CREATE INDEX ix_tr_service ON trips(service_id);
-CREATE INDEX ix_cd_day ON calendar_dates(day);
-CREATE INDEX ix_stop_coords ON stops(lat,lon);
+-- Indexes are created after bulk insert to speed up first-time load.
 '''
 
 
@@ -179,6 +177,15 @@ def import_zip(zip_path: Path, target: Path):
                     'feed_version':feed.get('feed_version') or '',
                     'updated_at': datetime.now(timezone.utc).isoformat()}
             con.executemany('INSERT INTO meta VALUES(?,?)', list(meta.items()))
+            STATE['stage']='Indeksowanie rozkładów'
+            con.executescript('''
+            CREATE INDEX ix_st_stop ON stop_times(stop_id);
+            CREATE INDEX ix_st_trip ON stop_times(trip_id,seq);
+            CREATE INDEX ix_tr_route ON trips(route_id);
+            CREATE INDEX ix_tr_service ON trips(service_id);
+            CREATE INDEX ix_cd_day ON calendar_dates(day);
+            CREATE INDEX ix_stop_coords ON stops(lat,lon);
+            ''')
             con.commit()
             counts = {k:con.execute('SELECT count(*) FROM '+k).fetchone()[0]
                       for k in ('routes','stops','trips','stop_times')}
@@ -201,7 +208,7 @@ def state_from_db():
                 counts = {k:con.execute('SELECT count(*) FROM '+k).fetchone()[0]
                           for k in ('routes','stops','trips','stop_times')}
             finally: con.close()
-            STATE.update({'ready':True,'loading':False,'error':None,
+            STATE.update({'ready':True,'loading':False,'error':None,'stage':'Gotowe',
                           'updated_at':meta.get('updated_at'),
                           'feed_start_date':meta.get('feed_start_date'),
                           'feed_end_date':meta.get('feed_end_date'),**counts})
@@ -213,26 +220,37 @@ def state_from_db():
 
 
 def download_gtfs() -> tuple[Path,str]:
-    """Use official latest valid full GTFS; fall back to public mirror."""
+    """Fast bounded discovery: explicit URL, newest CKAN resource, trusted mirror.
+
+    Never iterate through a long list of past schedules while users wait.
+    """
     sources=[]
     problems=[]
+    if GTFS_URL and GTFS_URL.startswith('https://'):
+        sources.append((GTFS_URL,'konfigurowany SIP_GTFS_URL'))
     try:
-        r=requests.get(CKAN, headers=UA, timeout=(12,25)); r.raise_for_status()
+        STATE['stage']='Sprawdzanie katalogu GZM'
+        r=requests.get(CKAN, headers=UA, timeout=(5,9)); r.raise_for_status()
         data=r.json()
         if not data.get('success'): raise ValueError('CKAN success=false')
         resources=[x for x in data['result']['resources']
                    if str(x.get('url','')).lower().split('?')[0].endswith('.zip')]
-        resources.sort(key=lambda x:(x.get('name') or '',x.get('last_modified') or ''),reverse=True)
-        sources.extend((x['url'],x.get('name','GTFS GZM')) for x in resources[:7])
-    except Exception as exc: problems.append('katalog GZM: '+str(exc))
+        resources.sort(key=lambda x:(x.get('created') or x.get('last_modified') or '', x.get('name') or ''),reverse=True)
+        if resources:
+            sources.append((resources[0]['url'],resources[0].get('name','GTFS GZM')))
+    except Exception as exc:
+        problems.append('katalog GZM: '+str(exc))
     sources.append((MIRROR,'mirror GTFS GZM'))
+    seen=set()
     for url,label in sources:
-        if not url.startswith('https://'):continue
-        file = None
+        if url in seen or not url.startswith('https://'):continue
+        seen.add(url)
+        file=None
         try:
-            with requests.get(url,headers=UA,stream=True,timeout=(15,110),allow_redirects=True) as r:
+            STATE['stage']='Pobieranie: '+label[:70]
+            with requests.get(url,headers=UA,stream=True,timeout=(7,35),allow_redirects=True) as r:
                 r.raise_for_status()
-                fd,filename=tempfile.mkstemp(suffix='.zip',dir=DATA); file=Path(filename)
+                fd,filename=tempfile.mkstemp(suffix='.zip',dir=DATA);file=Path(filename)
                 count=0
                 with os.fdopen(fd,'wb') as out:
                     for chunk in r.iter_content(chunk_size=262144):
@@ -240,24 +258,29 @@ def download_gtfs() -> tuple[Path,str]:
                             count+=len(chunk)
                             if count>260*1024*1024:raise ValueError('GTFS >260 MB')
                             out.write(chunk)
+            STATE['stage']='Sprawdzanie archiwum GTFS'
             with zipfile.ZipFile(file) as z:
                 if not {'routes.txt','stops.txt','trips.txt','stop_times.txt'}.issubset(member_names(z)):
                     raise ValueError('niekompletne GTFS')
             return file,url
         except Exception as exc:
             problems.append(label+': '+str(exc))
-            if file: file.unlink(missing_ok=True)
+            if file:file.unlink(missing_ok=True)
     raise RuntimeError('Nie udało się pobrać GTFS: '+'; '.join(problems[-3:]))
 
 
 def refresh_gtfs(provided: Path | None=None):
     if not LOAD_LOCK.acquire(False):return False
     STATE['loading']=True
+    STATE['error']=None
+    STATE['stage']='Rozpoczęcie pobierania GTFS'
+    STATE['attempt_started_at']=now_pl().isoformat()
     temp_db=DB.with_suffix('.new')
     feed_file = provided
     source = 'ręczny import GTFS' if provided else None
     try:
         if feed_file is None:feed_file,source=download_gtfs()
+        STATE['stage']='Przetwarzanie przystanków i kursów'
         counts,meta=import_zip(feed_file,temp_db)
         with GATE:os.replace(temp_db,DB)
         state_from_db()
@@ -267,6 +290,7 @@ def refresh_gtfs(provided: Path | None=None):
     except Exception as exc:
         LOG.exception('Błąd ładowania GTFS')
         STATE['error']=str(exc)
+        STATE['stage']='Błąd pobierania; ponowna próba za '+str(RETRY_SECONDS)+' s'
         STATE['loading']=False
         return False
     finally:
@@ -292,11 +316,11 @@ def loop_loader():
     if DB.exists():state_from_db()
     while True:
         try:
-            if (not is_ready() or feed_date_outdated()) and time.monotonic()-LAST_REFRESH_ATTEMPT>900:
+            if (not is_ready() or feed_date_outdated()) and time.monotonic()-LAST_REFRESH_ATTEMPT>RETRY_SECONDS:
                 LAST_REFRESH_ATTEMPT=time.monotonic()
                 refresh_gtfs()
         except Exception: LOG.exception('Błąd pętli aktualizacji')
-        time.sleep(900)
+        time.sleep(10)
 
 
 def services_on(con, day:date):
@@ -623,7 +647,9 @@ def app(environ,start_response):
         if method=='GET' and path=='/api/vehicles':return json_response(start_response,fetch_vehicles())
         if method=='POST' and path=='/api/refresh':
             global LAST_REFRESH_ATTEMPT
-            if time.monotonic()-LAST_REFRESH_ATTEMPT<600:
+            if STATE['loading']:
+                return json_response(start_response,{'ok':False,'error':'Aktualizacja już trwa'},'409 Conflict')
+            if time.monotonic()-LAST_REFRESH_ATTEMPT<RETRY_SECONDS:
                 return json_response(start_response,{'ok':False,'error':'Odświeżenie można ponowić za kilka minut'},'429 Too Many Requests')
             LAST_REFRESH_ATTEMPT=time.monotonic()
             threading.Thread(target=refresh_gtfs,daemon=True).start()

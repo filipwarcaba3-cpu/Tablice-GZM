@@ -1,6 +1,17 @@
-# Emulator SIP GZM 3.0 🚍
+# Emulator SIP GZM 3.1 — poprawka pobierania GTFS 🚍
 
 Nieoficjalny edukacyjny emulator wyświetlacza i mapy linii ZTM Transport GZM.
+
+## Co poprawiono w 3.1
+
+- Podczas pierwszego startu nie sprawdza kolejno siedmiu archiwów z długimi timeoutami: wybiera najnowszy zasób GTFS oraz źródło zapasowe.
+- Pobieranie ma krótsze timeouty, a w razie błędu kolejna próba następuje po około 90 sekundach (zamiast 15 minut).
+- Tworzenie indeksów SQLite przesunięto na koniec importu danych, co może znacząco skrócić pierwsze przetwarzanie.
+- Ekran wyświetla etap ładowania i ewentualny błąd.
+- Opcjonalna zmienna środowiskowa `SIP_GTFS_URL` przyjmuje bezpośredni **https** URL do własnego, kompletnego archiwum GTFS. Możesz ją ustawić w Render → Environment.
+- Dodatkowa opcja `SIP_RETRY_SECONDS` (domyślnie 90) steruje odstępem ponownych prób.
+
+**Uwaga:** nie potwierdzono pobrania najnowszych danych z sieci w środowisku testowym; dostępność zewnętrznych serwerów i czas parsowania na Render zależą od źródła, rozmiaru bazy i limitów usługi.
 
 ## Wgrywanie ZIP na GitHub → Render
 
@@ -49,3 +60,6 @@ Możesz też użyć Render Blueprint (`render.yaml`), jeśli masz taką opcję n
 ## Testy
 
 Lokalnie: `python -m unittest discover -s tests -v`. Testy tworzą tymczasowy sztuczny GTFS wyłącznie do testowania i **nie są wyświetlane jako rzeczywiste dane GZM**.
+
+## Poprawka tablicy 3.1
+Wyświetlacz dopasowano do zdjęcia ZTM: numer linii, czarny separator ze strzałkami, żółty nagłówek, cztery kolejne przystanki i narastające minuty, szary pasek kierunku. Interfejs skaluje się na telefonie i PC.
