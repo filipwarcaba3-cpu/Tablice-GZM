@@ -1,4 +1,4 @@
-Flask>=3.0,<4
-requests>=2.31,<3
-gtfs-realtime-bindings>=1.0.0
-gunicorn>=22,<24
+Flask==3.1.1
+requests==2.32.5
+gtfs-realtime-bindings==1.0.0
+gunicorn==23.0.0
