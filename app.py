@@ -1,4 +1,4 @@
-"""Emulator SIP GZM 3.0 — WSGI + standard Python server.
+"""Emulator SIP GZM 3.2 — WSGI + standard Python server.
 
 Sources: GZM open data (CKAN GTFS) and official GTFS Realtime.
 No invented GTFS or vehicle positions. All times use Europe/Warsaw.
@@ -39,17 +39,19 @@ HERE = Path(__file__).resolve().parent
 DATA = Path(os.environ.get('SIP_DATA_DIR', str(HERE/'data'))).resolve()
 DATA.mkdir(parents=True, exist_ok=True)
 DB = DATA/'gtfs.sqlite3'
+CATALOG = DATA/'catalog.sqlite3'
+ARCHIVE_CACHE = DATA/'gtfs-latest.zip'
 WARSAW = ZoneInfo('Europe/Warsaw')
 CKAN = 'https://otwartedane.metropoliagzm.pl/api/3/action/package_show?id=rozklady-jazdy-i-lokalizacja-przystankow-gtfs-wersja-rozszerzona'
 MIRROR = 'https://github.com/TransportGZM-GTFS-mirror/TransportGZM-GTFS-extended-ver/releases/latest/download/TransportGZM-GTFS.zip'
 LIVE = 'https://gtfsrt.transportgzm.pl:5443/gtfsrt/gzm'
-UA = {'User-Agent': 'SIP-GZM-Edukacyjny/3.0 (GTFS viewer; CC-BY-4.0)'}
+UA = {'User-Agent': 'SIP-GZM-Edukacyjny/3.2 (GTFS viewer; CC-BY-4.0)'}
 GATE = threading.RLock()
 LOAD_LOCK = threading.Lock()
 RT_LOCK = threading.Lock()
 STATE = {'ready': False, 'loading': False, 'error': None, 'source': None,
          'updated_at': None, 'feed_start_date': None, 'feed_end_date': None,
-         'stage': 'Oczekiwanie', 'attempt_started_at': None,
+         'stage': 'Oczekiwanie', 'attempt_started_at': None, 'catalog_ready': False, 'processed_stop_times': 0,
          'routes': 0, 'stops': 0, 'trips': 0, 'stop_times': 0}
 RT = {'at': 0.0, 'vehicles': None, 'error': 'Jeszcze nie pobrano',
       'updated_at': None, 'sample_timestamp': None, 'trip_updates': {}, 'trip_at': 0.0,
@@ -128,6 +130,57 @@ def csv_rows(z, name):
             yield {str(k or '').strip(): (v.strip() if isinstance(v, str) else v) for k, v in row.items()}
 
 
+
+
+def load_catalog(archive: Path):
+    """Publish stops and bus line list *before* the large timetable import."""
+    stage = CATALOG.with_suffix('.new')
+    stage.unlink(missing_ok=True)
+    try:
+        with zipfile.ZipFile(archive) as z:
+            names = member_names(z)
+            con = connect(stage)
+            try:
+                con.execute('PRAGMA synchronous=OFF')
+                con.executescript('''
+                    CREATE TABLE routes(route_id TEXT PRIMARY KEY,short_name TEXT,long_name TEXT,route_type INTEGER);
+                    CREATE TABLE stops(stop_id TEXT PRIMARY KEY,code TEXT,name TEXT,lat REAL,lon REAL,location_type INTEGER);
+                ''')
+                def rows(name, fn):
+                    batch=[]
+                    for r in csv_rows(z, names[name]):
+                        v=fn(r)
+                        if v is not None:batch.append(v)
+                        if len(batch)>=10000:
+                            con.executemany('INSERT OR REPLACE INTO '+('routes' if name=='routes.txt' else 'stops')+' VALUES ('+(','.join('?'*len(batch[0])))+')',batch);batch=[]
+                    if batch:con.executemany('INSERT OR REPLACE INTO '+('routes' if name=='routes.txt' else 'stops')+' VALUES ('+(','.join('?'*len(batch[0])))+')',batch)
+                rows('routes.txt', lambda r: (r['route_id'],r.get('route_short_name',''),r.get('route_long_name',''),integer(r.get('route_type'),3)))
+                rows('stops.txt', lambda r: (r['stop_id'],r.get('stop_code',''),r.get('stop_name',''),number(r.get('stop_lat')),number(r.get('stop_lon')),integer(r.get('location_type'))))
+                con.execute('CREATE INDEX ix_coords ON stops(lat,lon)')
+                con.commit()
+                counts={key:con.execute('SELECT COUNT(*) FROM '+key).fetchone()[0] for key in ('routes','stops')}
+            finally:con.close()
+        if not all(counts.values()):raise ValueError('Niekompletne dane przystanków lub linii')
+        with GATE:
+            os.replace(stage,CATALOG)
+            STATE.update({'catalog_ready':True,**counts,'stage':'Przystanki i linie gotowe; import rozkładów'})
+        LOG.info('Katalog gotowy: %s',counts)
+    finally:stage.unlink(missing_ok=True)
+
+
+def restore_catalog():
+    if not CATALOG.is_file():return False
+    try:
+        con=connect(CATALOG)
+        try:counts={key:con.execute('SELECT COUNT(*) FROM '+key).fetchone()[0] for key in ('routes','stops')}
+        finally:con.close()
+        if not all(counts.values()):return False
+        STATE.update({'catalog_ready':True,**counts})
+        return True
+    except Exception:
+        LOG.exception('Niepoprawny katalog przystanków')
+        return False
+
 def import_zip(zip_path: Path, target: Path):
     """Parse genuine GTFS to SQLite atomically; file kept on disk, not copied to RAM."""
     with zipfile.ZipFile(zip_path) as z:
@@ -139,6 +192,9 @@ def import_zip(zip_path: Path, target: Path):
         con = connect(target)
         try:
             con.executescript(SCHEMA)
+            con.execute('PRAGMA synchronous=OFF')
+            con.execute('PRAGMA temp_store=FILE')
+            con.execute('PRAGMA cache_size=-8192')
             con.execute('BEGIN')
             def bulk(file, sql, fields, transform=lambda r:r):
                 if file not in files: return
@@ -146,10 +202,15 @@ def import_zip(zip_path: Path, target: Path):
                 for r in csv_rows(z, files[file]):
                     rr = transform(r)
                     batch.append(tuple(rr.get(k) for k in fields))
-                    if len(batch) >= 5000:
+                    if len(batch) >= 12000:
                         con.executemany(sql, batch)
                         batch = []
-                if batch: con.executemany(sql, batch)
+                        if file=='stop_times.txt':
+                            STATE['processed_stop_times']+=12000
+                            STATE['stage']='Import rozkładów: '+str(STATE['processed_stop_times'])+' wierszy'
+                if batch:
+                    con.executemany(sql, batch)
+                    if file=='stop_times.txt':STATE['processed_stop_times']+=len(batch)
             bulk('routes.txt','INSERT OR REPLACE INTO routes VALUES (?,?,?,?,?)',
                  ['route_id','route_short_name','route_long_name','route_type','agency_id'],
                  lambda r:{**r,'route_type':integer(r.get('route_type'),3)})
@@ -208,7 +269,7 @@ def state_from_db():
                 counts = {k:con.execute('SELECT count(*) FROM '+k).fetchone()[0]
                           for k in ('routes','stops','trips','stop_times')}
             finally: con.close()
-            STATE.update({'ready':True,'loading':False,'error':None,'stage':'Gotowe',
+            STATE.update({'ready':True,'catalog_ready':True,'loading':False,'error':None,'stage':'Gotowe',
                           'updated_at':meta.get('updated_at'),
                           'feed_start_date':meta.get('feed_start_date'),
                           'feed_end_date':meta.get('feed_end_date'),**counts})
@@ -224,6 +285,8 @@ def download_gtfs() -> tuple[Path,str]:
 
     Never iterate through a long list of past schedules while users wait.
     """
+    if ARCHIVE_CACHE.is_file() and time.time()-ARCHIVE_CACHE.stat().st_mtime<4*3600:
+        return ARCHIVE_CACHE,'lokalny cache archiwum GTFS'
     sources=[]
     problems=[]
     if GTFS_URL and GTFS_URL.startswith('https://'):
@@ -280,7 +343,12 @@ def refresh_gtfs(provided: Path | None=None):
     source = 'ręczny import GTFS' if provided else None
     try:
         if feed_file is None:feed_file,source=download_gtfs()
-        STATE['stage']='Przetwarzanie przystanków i kursów'
+        STATE['stage']='Tworzenie szybkiej mapy przystanków i linii'
+        STATE['processed_stop_times']=0
+        try:load_catalog(feed_file)
+        except Exception:
+            LOG.exception('Nie udało się przygotować szybkiego katalogu')
+        STATE['stage']='Przetwarzanie kursów i godzin odjazdów'
         counts,meta=import_zip(feed_file,temp_db)
         with GATE:os.replace(temp_db,DB)
         state_from_db()
@@ -295,7 +363,11 @@ def refresh_gtfs(provided: Path | None=None):
         return False
     finally:
         temp_db.unlink(missing_ok=True)
-        if provided is None and feed_file: feed_file.unlink(missing_ok=True)
+        if provided is None and feed_file and feed_file!=ARCHIVE_CACHE:
+            try:
+                if STATE['ready']:os.replace(feed_file,ARCHIVE_CACHE)
+                else:feed_file.unlink(missing_ok=True)
+            except OSError:feed_file.unlink(missing_ok=True)
         LOAD_LOCK.release()
 
 
@@ -314,6 +386,7 @@ def feed_date_outdated():
 def loop_loader():
     global LAST_REFRESH_ATTEMPT
     if DB.exists():state_from_db()
+    if not is_ready():restore_catalog()
     while True:
         try:
             if (not is_ready() or feed_date_outdated()) and time.monotonic()-LAST_REFRESH_ATTEMPT>RETRY_SECONDS:
@@ -334,11 +407,14 @@ def services_on(con, day:date):
 
 
 def routes_list(bus=True):
-    if not is_ready():return []
+    if not is_ready() and not STATE['catalog_ready']:return []
     with GATE:
-        con=connect()
+        con=connect(DB if is_ready() else CATALOG)
         try:
-            rows=con.execute('''SELECT r.route_id,r.short_name,r.long_name,r.route_type,
+            if not is_ready():
+                rows=con.execute('SELECT route_id,short_name,long_name,route_type,0 AS trips FROM routes ORDER BY short_name COLLATE NOCASE').fetchall()
+            else:
+                rows=con.execute('''SELECT r.route_id,r.short_name,r.long_name,r.route_type,
                 (SELECT COUNT(*) FROM trips t WHERE t.route_id=r.route_id) trips
                 FROM routes r ORDER BY r.short_name COLLATE NOCASE''').fetchall()
             ret=[]
@@ -352,25 +428,25 @@ def routes_list(bus=True):
 
 
 def stop_bbox(w,s,e,n,zoom):
-    if not is_ready():return {'items':[],'total':0,'clustered':False}
+    if not is_ready() and not STATE['catalog_ready']:return {'items':[],'total':0,'clustered':False}
     w=max(-180,min(180,w));e=max(-180,min(180,e));s=max(-90,min(90,s));n=max(-90,min(90,n))
     if e<=w or n<=s:return {'items':[],'total':0,'clustered':False}
     with GATE:
-        con=connect()
+        con=connect(DB if is_ready() else CATALOG)
         try:
             total=con.execute('SELECT COUNT(*) FROM stops WHERE lon BETWEEN ? AND ? AND lat BETWEEN ? AND ? AND location_type=0',
                               (w,e,s,n)).fetchone()[0]
             # At low zoom group nearby platforms into visual clusters; zooming in exposes each stop.
-            if zoom < 12 or total>6000:
-                cell=0.10 if zoom<=8 else 0.045 if zoom<=10 else 0.012 if zoom<=12 else 0.006
+            if zoom < 13 or total>2500:
+                cell=0.18 if zoom<=8 else 0.10 if zoom<=9 else 0.06 if zoom<=10 else 0.03 if zoom<=11 else 0.016 if zoom<=12 else 0.009
                 rows=con.execute('''SELECT AVG(lat),AVG(lon),COUNT(*) FROM stops
                     WHERE lon BETWEEN ? AND ? AND lat BETWEEN ? AND ? AND location_type=0
-                    GROUP BY CAST(lat/? AS INT), CAST(lon/? AS INT) LIMIT 1400''',
+                    GROUP BY CAST(lat/? AS INT), CAST(lon/? AS INT) LIMIT 900''',
                     (w,e,s,n,cell,cell)).fetchall()
                 return {'items':[{'lat':r[0],'lon':r[1],'count':r[2],'cluster':True} for r in rows],
                         'total':total,'clustered':True}
             rows=con.execute('''SELECT stop_id,code,name,lat,lon FROM stops
-                WHERE lon BETWEEN ? AND ? AND lat BETWEEN ? AND ? AND location_type=0 LIMIT 6001''',
+                WHERE lon BETWEEN ? AND ? AND lat BETWEEN ? AND ? AND location_type=0 LIMIT 2501''',
                 (w,e,s,n)).fetchall()
             return {'items':[{'id':r[0],'code':r[1],'name':r[2],'lat':r[3],'lon':r[4]} for r in rows],
                     'total':total,'clustered':False}
@@ -406,11 +482,17 @@ def route_view(route_id, day):
             if route is None:return None
             active=services_on(con,day)
             trips=con.execute('SELECT trip_id,headsign,direction_id,service_id FROM trips WHERE route_id=?',(route_id,)).fetchall()
+            active_trips=[t for t in trips if t['service_id'] in active]
+            trip_stops=defaultdict(list)
+            if active_trips:
+                for row in con.execute('''SELECT st.trip_id,st.stop_id,st.departure,st.arrival
+                    FROM stop_times st JOIN trips t ON t.trip_id=st.trip_id
+                    WHERE t.route_id=? ORDER BY st.trip_id,st.seq''',(route_id,)):
+                    trip_stops[row['trip_id']].append(row)
             # Keep a representative of each stop pattern, plus departures on requested day.
             by_pattern={}
-            for t in trips:
-                if t['service_id'] not in active:continue
-                rows=con.execute('SELECT stop_id,departure,arrival FROM stop_times WHERE trip_id=? ORDER BY seq',(t['trip_id'],)).fetchall()
+            for t in active_trips:
+                rows=trip_stops.get(t['trip_id'],[])
                 if not rows:continue
                 signature=(t['direction_id'],t['headsign'],tuple(r['stop_id'] for r in rows))
                 if signature not in by_pattern:
@@ -421,13 +503,36 @@ def route_view(route_id, day):
                 dep=rows[0]['departure'] or rows[0]['arrival']
                 by_pattern[signature]['departures'].append({'trip_id':t['trip_id'],'clock':gtfs_clock(dep),
                                                              'seconds':gtfs_seconds(dep) or 0})
+            selected_day=day
+            if not by_pattern:
+                # If selected day has no service, present the next day that really runs,
+                # clearly labelled as a different day, never as today's departures.
+                for shift in range(1,8):
+                    candidate=day+timedelta(days=shift)
+                    active_next=services_on(con,candidate)
+                    avail=[t for t in trips if t['service_id'] in active_next]
+                    if not avail:continue
+                    selected_day=candidate
+                    for t in avail:
+                        rows=con.execute('SELECT stop_id,departure,arrival FROM stop_times WHERE trip_id=? ORDER BY seq',(t['trip_id'],)).fetchall()
+                        if not rows:continue
+                        signature=(t['direction_id'],t['headsign'],tuple(r['stop_id'] for r in rows))
+                        if signature not in by_pattern:
+                            key=hashlib.sha1(repr(signature).encode()).hexdigest()[:12]
+                            by_pattern[signature]={'id':key,'trip_id':t['trip_id'],
+                                'name':t['headsign'] or rows[-1]['stop_id'],'count':len(rows),
+                                'departures':[],'direction':t['direction_id']}
+                        dep=rows[0]['departure'] or rows[0]['arrival']
+                        by_pattern[signature]['departures'].append({'trip_id':t['trip_id'],
+                            'clock':gtfs_clock(dep),'seconds':gtfs_seconds(dep) or 0})
+                    break
             variants=sorted(by_pattern.values(),key=lambda p:(p['direction'],p['name'], -p['count']))
             for v in variants:
                 v['departures'].sort(key=lambda d:d['seconds'])
                 v['departures']=v['departures'][:100]
             return {'route':{'id':route_id,'number':route['short_name'],'name':route['long_name'],
                              'type':route['route_type']},'variants':variants[:55],
-                    'date':day.isoformat(),'active_trips':sum(len(v['departures']) for v in variants)}
+                    'date':selected_day.isoformat(),'requested_date':day.isoformat(),'active_trips':sum(len(v['departures']) for v in variants)}
         finally:con.close()
 
 
@@ -476,7 +581,7 @@ def live_predictions_loop():
         time.sleep(35)
 
 
-def stop_view(stop_id, ref=None, minutes=180):
+def stop_view(stop_id, ref=None, minutes=720):
     if not is_ready():return None
     current=ref or now_pl()
     window_end=current+timedelta(minutes=minutes)
@@ -489,7 +594,7 @@ def stop_view(stop_id, ref=None, minutes=180):
                    t.route_id,t.service_id,t.headsign,r.short_name
                    FROM stop_times st JOIN trips t ON st.trip_id=t.trip_id
                    JOIN routes r ON r.route_id=t.route_id
-                   WHERE st.stop_id=? AND st.pickup != 1''',(stop_id,)).fetchall()
+                   WHERE st.stop_id=? AND COALESCE(st.pickup,0) != 1''',(stop_id,)).fetchall()
             active={d:services_on(con,d) for d in
                     (current.date()-timedelta(days=1), current.date(),current.date()+timedelta(days=1))}
             departures=[]
@@ -531,7 +636,7 @@ def stop_view(stop_id, ref=None, minutes=180):
             departures=departures[:60]
             return {'stop':{'id':stop['stop_id'],'name':stop['name'],'code':stop['code'],
                             'lat':stop['lat'],'lon':stop['lon']},
-                    'departures':departures,'as_of':current.isoformat(),'window_minutes':minutes}
+                    'departures':departures,'as_of':current.isoformat(),'window_minutes':minutes,'feed_start_date':STATE.get('feed_start_date'),'feed_end_date':STATE.get('feed_end_date')}
         finally:con.close()
 
 
@@ -614,9 +719,9 @@ def app(environ,start_response):
             start_response('200 OK',[('Content-Type','text/html; charset=utf-8'),('Content-Length',str(len(body))),
                                      ('Cache-Control','no-cache')]);return [body]
         if method=='GET' and path=='/health':
-            return json_response(start_response,{'ok':True,'version':'3.0','gtfs_ready':is_ready()})
+            return json_response(start_response,{'ok':True,'version':'3.5','gtfs_ready':is_ready(),'catalog_ready':STATE['catalog_ready']})
         if method=='GET' and path=='/api/status':
-            return json_response(start_response,{**STATE,'version':'3.0',
+            return json_response(start_response,{**STATE,'version':'3.5',
                     'today':now_pl().date().isoformat(),'timezone':'Europe/Warsaw'})
         if method=='GET' and path=='/api/routes':
             data=routes_list(parse_qs_1(environ,'mode','bus')!='all')
@@ -624,10 +729,14 @@ def app(environ,start_response):
         if method=='GET' and path=='/api/stops':
             q=lambda key,default:float(parse_qs_1(environ,key,str(default)))
             return json_response(start_response,stop_bbox(q('w',18.5),q('s',49.8),q('e',19.7),q('n',50.8),q('z',10)))
+        if method=='GET' and path.startswith('/api/stop/') and not is_ready():
+            return json_response(start_response,{'error':'Odjazdy są jeszcze importowane; to nie oznacza, że autobus nie kursuje.','stage':STATE.get('stage'),'processed_stop_times':STATE.get('processed_stop_times',0)},'503 Service Unavailable')
         if method=='GET' and path.startswith('/api/stop/'):
-            result=stop_view(path[len('/api/stop/'):],minutes=max(15,min(300,integer(parse_qs_1(environ,'minutes','180'),180))))
+            result=stop_view(path[len('/api/stop/'):],minutes=max(15,min(1440,integer(parse_qs_1(environ,'minutes','720'),720))))
             return json_response(start_response,result if result else {'error':'Nie znaleziono przystanku'},
                                  '200 OK' if result else '404 Not Found')
+        if method=='GET' and path.startswith('/api/trip/') and not is_ready():
+            return json_response(start_response,{'error':'Kursy są jeszcze importowane.'},'503 Service Unavailable')
         if method=='GET' and path.startswith('/api/trip/'):
             with GATE:
                 if is_ready():
@@ -637,6 +746,8 @@ def app(environ,start_response):
                 else:res=None
             return json_response(start_response,res if res else {'error':'Nie znaleziono kursu'},
                                  '200 OK' if res else '404 Not Found')
+        if method=='GET' and path.startswith('/api/route/') and not is_ready():
+            return json_response(start_response,{'error':'Trasy są jeszcze importowane. Lista linii jest już dostępna.','stage':STATE.get('stage')},'503 Service Unavailable')
         if method=='GET' and path.startswith('/api/route/'):
             raw=parse_qs_1(environ,'date',now_pl().date().isoformat())
             try:day=date.fromisoformat(raw)
@@ -667,5 +778,5 @@ if os.environ.get('SIP_AUTOLOAD','1')=='1':
 
 if __name__=='__main__':
     port=int(os.environ.get('PORT','5000'))
-    print(f'Emulator SIP GZM 3.0: http://127.0.0.1:{port}',flush=True)
+    print(f'Emulator SIP GZM 3.5: http://127.0.0.1:{port}',flush=True)
     with make_server('0.0.0.0',port,app) as srv:srv.serve_forever()

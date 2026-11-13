@@ -1,3 +1,7 @@
+# Emulator SIP GZM 3.2 — poprawka pustej mapy i importu GTFS
+
+Wersja 3.2: najpierw tworzy i udostępnia katalog przystanków i linii, a rozkłady importuje osobno; lżejszy import SQLite, postęp w `/api/status`, 4-godzinny cache pobranego GTFS na tej samej instancji. Odjazdy z przystanków i pełne trasy zaczną działać po ukończeniu importu stop_times. W razie ponownego restartu bez dysku trwałego na Render Free baza może być tworzona od nowa.
+
 # Emulator SIP GZM 3.1 — poprawka pobierania GTFS 🚍
 
 Nieoficjalny edukacyjny emulator wyświetlacza i mapy linii ZTM Transport GZM.
@@ -33,7 +37,7 @@ Możesz też użyć Render Blueprint (`render.yaml`), jeśli masz taką opcję n
 ## Funkcje
 
 - Mapa przystanków GZM w widocznym obszarze: skupiska przy oddaleniu, szczegółowe przystanki po przybliżeniu.
-- Kliknięcie przystanku: planowe odjazdy w ciągu 3 godzin; jeśli oficjalny GTFS-RT udostępni prognozę danego kursu — prognoza z etykietą **GTFS-RT live**.
+- Kliknięcie przystanku: planowe odjazdy w ciągu 12 godzin; jeśli oficjalny GTFS-RT udostępni prognozę danego kursu — prognoza z etykietą **GTFS-RT live**.
 - Kliknięcie odjazdu: otwarcie właściwego kursu, trasy i przystanków.
 - Lista wszystkich **autobusowych** linii znajdujących się w pobranym GTFS, warianty i kursy aktywne w dniu przeglądania.
 - Aktualizowane znaczniki autobusów **tylko jeśli odpowiada oficjalny GTFS-RT**; brak danych jest jasno oznaczany.
@@ -63,3 +67,9 @@ Lokalnie: `python -m unittest discover -s tests -v`. Testy tworzą tymczasowy sz
 
 ## Poprawka tablicy 3.1
 Wyświetlacz dopasowano do zdjęcia ZTM: numer linii, czarny separator ze strzałkami, żółty nagłówek, cztery kolejne przystanki i narastające minuty, szary pasek kierunku. Interfejs skaluje się na telefonie i PC.
+
+## Poprawka 3.3 — tablice przystankowe i wybór kursów
+- Tablice przystankowe szukają rozkładowych odjazdów do 12 godzin naprzód zamiast 3, a gdy rozkłady są jeszcze importowane informują o tym jednoznacznie.
+- Dla linii bez kursów w wybranym dniu pokazany może być najbliższy dzień kursowania w zakresie kolejnych 7 dni; jego data jest oznaczona, nie jest przedstawiana jako dzisiaj.
+- Przyspieszono pobieranie wariantów linii przez jedno zapytanie o przystanki na trasie zamiast osobnego zapytania dla każdego aktywnego kursu.
+- Żadne z tych ulepszeń nie zastępuje pomyślnego importu GTFS. Dopóki `/api/status` zwraca `ready:false`, rzeczywiste odjazdy nie są dostępne. Nie są generowane fikcyjne kursy ani pojazdy.
