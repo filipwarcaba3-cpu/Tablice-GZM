@@ -65,6 +65,9 @@ class Tests(unittest.TestCase):
     def test_routes_buses(self):
         status,body=call('/api/routes?mode=bus');self.assertEqual(status,'200 OK')
         data=json.loads(body);self.assertEqual({r['number'] for r in data['routes']},{'904N','808'})
+    def test_routes_all_include_tram(self):
+        status,body=call('/api/routes?mode=all');self.assertEqual(status,'200 OK')
+        data=json.loads(body);self.assertIn('T1',{r['number'] for r in data['routes']})
     def test_map_stops(self):
         status,body=call('/api/stops?w=19&e=19.3&s=50.2&n=50.5&z=14');self.assertEqual(status,'200 OK')
         data=json.loads(body);self.assertEqual(data['total'],5);self.assertEqual(len(data['items']),5)
