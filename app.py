@@ -507,7 +507,7 @@ def route_view(route_id, day):
             if not by_pattern:
                 # If selected day has no service, present the next day that really runs,
                 # clearly labelled as a different day, never as today's departures.
-                for shift in range(1,8):
+                for shift in range(1,36):
                     candidate=day+timedelta(days=shift)
                     active_next=services_on(con,candidate)
                     avail=[t for t in trips if t['service_id'] in active_next]
@@ -526,13 +526,32 @@ def route_view(route_id, day):
                         by_pattern[signature]['departures'].append({'trip_id':t['trip_id'],
                             'clock':gtfs_clock(dep),'seconds':gtfs_seconds(dep) or 0})
                     break
+            if not by_pattern and trips:
+                # GTFS sometimes advertises a route but contains no service within the
+                # current validity window. Show an actual stored trip as a route
+                # preview, NEVER claim it is a departure today.
+                selected_day=None
+                for t in trips[:250]:
+                    rows=con.execute('SELECT stop_id,departure,arrival FROM stop_times WHERE trip_id=? ORDER BY seq',(t['trip_id'],)).fetchall()
+                    if not rows:continue
+                    signature=(t['direction_id'],t['headsign'],tuple(r['stop_id'] for r in rows))
+                    if signature not in by_pattern:
+                        key=hashlib.sha1(repr(signature).encode()).hexdigest()[:12]
+                        by_pattern[signature]={'id':key,'trip_id':t['trip_id'],
+                            'name':t['headsign'] or rows[-1]['stop_id'],'count':len(rows),
+                            'departures':[],'direction':t['direction_id']}
+                    dep=rows[0]['departure'] or rows[0]['arrival']
+                    by_pattern[signature]['departures'].append({'trip_id':t['trip_id'],
+                        'clock':gtfs_clock(dep),'seconds':gtfs_seconds(dep) or 0})
+                # Distinguish the preview from a real scheduled date in the response.
             variants=sorted(by_pattern.values(),key=lambda p:(p['direction'],p['name'], -p['count']))
             for v in variants:
                 v['departures'].sort(key=lambda d:d['seconds'])
                 v['departures']=v['departures'][:100]
             return {'route':{'id':route_id,'number':route['short_name'],'name':route['long_name'],
                              'type':route['route_type']},'variants':variants[:55],
-                    'date':selected_day.isoformat(),'requested_date':day.isoformat(),'active_trips':sum(len(v['departures']) for v in variants)}
+                    'date':selected_day.isoformat() if selected_day else None,'requested_date':day.isoformat(),
+                    'preview_only':selected_day is None,'active_trips':sum(len(v['departures']) for v in variants) if selected_day else 0}
         finally:con.close()
 
 
@@ -719,9 +738,9 @@ def app(environ,start_response):
             start_response('200 OK',[('Content-Type','text/html; charset=utf-8'),('Content-Length',str(len(body))),
                                      ('Cache-Control','no-cache')]);return [body]
         if method=='GET' and path=='/health':
-            return json_response(start_response,{'ok':True,'version':'3.5','gtfs_ready':is_ready(),'catalog_ready':STATE['catalog_ready']})
+            return json_response(start_response,{'ok':True,'version':'3.7','gtfs_ready':is_ready(),'catalog_ready':STATE['catalog_ready']})
         if method=='GET' and path=='/api/status':
-            return json_response(start_response,{**STATE,'version':'3.5',
+            return json_response(start_response,{**STATE,'version':'3.7',
                     'today':now_pl().date().isoformat(),'timezone':'Europe/Warsaw'})
         if method=='GET' and path=='/api/routes':
             data=routes_list(parse_qs_1(environ,'mode','bus')!='all')
@@ -778,5 +797,5 @@ if os.environ.get('SIP_AUTOLOAD','1')=='1':
 
 if __name__=='__main__':
     port=int(os.environ.get('PORT','5000'))
-    print(f'Emulator SIP GZM 3.5: http://127.0.0.1:{port}',flush=True)
+    print(f'Emulator SIP GZM 3.7: http://127.0.0.1:{port}',flush=True)
     with make_server('0.0.0.0',port,app) as srv:srv.serve_forever()

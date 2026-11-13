@@ -1,3 +1,10 @@
+# Emulator SIP GZM 3.7 — poprawki list i wyświetlacza
+
+- Każda kategoria linii sortowana jest naturalnie: 1, 2, 3, 10, 11, 100; M1, M2, M10, M103.
+- Numer linii na tablicy SIP mieści się w lewej kolumnie (również M103).
+- Gdy w żądanym przedziale dat GTFS brak aktywnych kursów, ale GTFS zawiera trasę, wyświetlacz może pokazać **podgląd zapisanego rzeczywistego wariantu**; **nie jest on rozkładem odjazdów na dziś**.
+- Nadal wymagane jest prawidłowe źródło GTFS i import na Render; pozycje live nie są symulowane.
+
 # Emulator SIP GZM 3.2 — poprawka pustej mapy i importu GTFS
 
 Wersja 3.2: najpierw tworzy i udostępnia katalog przystanków i linii, a rozkłady importuje osobno; lżejszy import SQLite, postęp w `/api/status`, 4-godzinny cache pobranego GTFS na tej samej instancji. Odjazdy z przystanków i pełne trasy zaczną działać po ukończeniu importu stop_times. W razie ponownego restartu bez dysku trwałego na Render Free baza może być tworzona od nowa.
