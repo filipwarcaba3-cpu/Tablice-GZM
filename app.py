@@ -555,6 +555,31 @@ def route_view(route_id, day):
         finally:con.close()
 
 
+def route_preview(route_id):
+    """Return a real stored GTFS trip promptly, independent of today's service calendar.
+    This is a route preview, not a live or today's scheduled departure.
+    """
+    if not is_ready(): return None
+    with GATE:
+        con=connect()
+        try:
+            route=con.execute('SELECT route_id,short_name,long_name FROM routes WHERE route_id=?',(route_id,)).fetchone()
+            if route is None:return None
+            # Prefer trips that actually have at least two stops.
+            rows=con.execute("""SELECT t.trip_id FROM trips t WHERE t.route_id=?
+                 AND EXISTS(SELECT 1 FROM stop_times st WHERE st.trip_id=t.trip_id)
+                 ORDER BY t.trip_id LIMIT 25""",(route_id,)).fetchall()
+            for row in rows:
+                preview=trip_view(con,row['trip_id'])
+                if preview and len(preview['stops'])>=2:
+                    return {'preview_only':True,'route':{'id':route_id,'number':route['short_name'],
+                        'name':route['long_name']},'trip':preview,
+                        'message':'Podgląd trasy zapisanej w GTFS. Nie oznacza odjazdu dzisiaj.'}
+            return {'preview_only':True,'route':{'id':route_id,'number':route['short_name'],
+                'name':route['long_name']},'trip':None,'message':'Nie znaleziono trasy z przystankami w GTFS.'}
+        finally:con.close()
+
+
 def fetch_trip_predictions(force=False):
     """Retrieve GTFS-RT predictions; if unavailable keep timetable-only departures."""
     if gtfs_realtime_pb2 is None:
@@ -738,9 +763,9 @@ def app(environ,start_response):
             start_response('200 OK',[('Content-Type','text/html; charset=utf-8'),('Content-Length',str(len(body))),
                                      ('Cache-Control','no-cache')]);return [body]
         if method=='GET' and path=='/health':
-            return json_response(start_response,{'ok':True,'version':'3.7','gtfs_ready':is_ready(),'catalog_ready':STATE['catalog_ready']})
+            return json_response(start_response,{'ok':True,'version':'3.8','gtfs_ready':is_ready(),'catalog_ready':STATE['catalog_ready']})
         if method=='GET' and path=='/api/status':
-            return json_response(start_response,{**STATE,'version':'3.7',
+            return json_response(start_response,{**STATE,'version':'3.8',
                     'today':now_pl().date().isoformat(),'timezone':'Europe/Warsaw'})
         if method=='GET' and path=='/api/routes':
             data=routes_list(parse_qs_1(environ,'mode','bus')!='all')
@@ -754,6 +779,11 @@ def app(environ,start_response):
             result=stop_view(path[len('/api/stop/'):],minutes=max(15,min(1440,integer(parse_qs_1(environ,'minutes','720'),720))))
             return json_response(start_response,result if result else {'error':'Nie znaleziono przystanku'},
                                  '200 OK' if result else '404 Not Found')
+        if method=='GET' and path.startswith('/api/preview/'):
+            result=route_preview(path[len('/api/preview/'):])
+            if result is None:
+                return json_response(start_response,{'error':'Podgląd niedostępny: baza GTFS niegotowa lub nie znaleziono linii'},'503 Service Unavailable' if not is_ready() else '404 Not Found')
+            return json_response(start_response,result)
         if method=='GET' and path.startswith('/api/trip/') and not is_ready():
             return json_response(start_response,{'error':'Kursy są jeszcze importowane.'},'503 Service Unavailable')
         if method=='GET' and path.startswith('/api/trip/'):
@@ -797,5 +827,5 @@ if os.environ.get('SIP_AUTOLOAD','1')=='1':
 
 if __name__=='__main__':
     port=int(os.environ.get('PORT','5000'))
-    print(f'Emulator SIP GZM 3.7: http://127.0.0.1:{port}',flush=True)
+    print(f'Emulator SIP GZM 3.8: http://127.0.0.1:{port}',flush=True)
     with make_server('0.0.0.0',port,app) as srv:srv.serve_forever()
