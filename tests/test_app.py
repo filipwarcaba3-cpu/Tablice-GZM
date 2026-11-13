@@ -68,6 +68,13 @@ class Tests(unittest.TestCase):
     def test_routes_all_include_tram(self):
         status,body=call('/api/routes?mode=all');self.assertEqual(status,'200 OK')
         data=json.loads(body);self.assertIn('T1',{r['number'] for r in data['routes']})
+    def test_route_preview_when_no_scheduled_service(self):
+        data=app.route_view('r904',date(2035,1,1))
+        self.assertTrue(data['preview_only'])
+        self.assertIsNone(data['date'])
+        self.assertEqual(data['active_trips'],0)
+        self.assertTrue(data['variants'])
+        self.assertTrue(data['variants'][0]['departures'])
     def test_map_stops(self):
         status,body=call('/api/stops?w=19&e=19.3&s=50.2&n=50.5&z=14');self.assertEqual(status,'200 OK')
         data=json.loads(body);self.assertEqual(data['total'],5);self.assertEqual(len(data['items']),5)
