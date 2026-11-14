@@ -71,24 +71,70 @@ class Tests(unittest.TestCase):
     def test_route_preview_when_no_scheduled_service(self):
         data=app.route_view('r904',date(2035,1,1))
         self.assertTrue(data['preview_only'])
-        self.assertIsNone(data['date'])
+        self.assertEqual(data['date'],'2035-01-01')
         self.assertEqual(data['active_trips'],0)
         self.assertTrue(data['variants'])
-        self.assertTrue(data['variants'][0]['departures'])
+        self.assertFalse(data['variants'][0]['departures'])
     def test_map_stops(self):
         status,body=call('/api/stops?w=19&e=19.3&s=50.2&n=50.5&z=14');self.assertEqual(status,'200 OK')
         data=json.loads(body);self.assertEqual(data['total'],5);self.assertEqual(len(data['items']),5)
     def test_map_clusters(self):
         _,body=call('/api/stops?w=19&e=19.3&s=50.2&n=50.5&z=9');self.assertTrue(json.loads(body)['clustered'])
     def test_line_variants(self):
-        status,body=call('/api/route/r904');self.assertEqual(status,'200 OK')
-        data=json.loads(body);self.assertEqual(data['route']['number'],'904N');self.assertEqual(data['active_trips'],2)
+        data=app.route_view('r904',date(2026,11,13),datetime(2026,11,13,17,50,tzinfo=app.WARSAW))
+        self.assertEqual(data['route']['number'],'904N');self.assertEqual(data['active_trips'],2)
     def test_trip(self):
         status,body=call('/api/trip/trip1');self.assertEqual(status,'200 OK')
         stops=json.loads(body)['stops'];self.assertEqual([s['min'] for s in stops],[0,2,5,7,9])
     def test_departures(self):
         ref=datetime(2026,11,12,17,59,tzinfo=app.WARSAW)
         data=app.stop_view('st1',ref,180);self.assertTrue(data['departures']);self.assertEqual(data['departures'][0]['minutes'],1)
+    def test_current_time_filters_past_departures(self):
+        current=datetime(2026,11,13,18,10,tzinfo=app.WARSAW)
+        data=app.route_view('r904',date(2026,11,13),current)
+        self.assertEqual(data['active_trips'],1)
+        dep=data['variants'][0]['departures'][0]
+        self.assertEqual(dep['trip_id'],'trip2')
+        self.assertEqual(dep['clock'],'19:00')
+        self.assertEqual(dep['date'],'2026-11-13')
+        self.assertEqual(dep['minutes'],50)
+    def test_in_progress_trip_uses_next_stop(self):
+        current=datetime(2026,11,13,18,4,tzinfo=app.WARSAW)
+        data=app.route_view('r904',date(2026,11,13),current)
+        self.assertEqual(data['active_trips'],2)
+        current_trip=next(d for v in data['variants'] for d in v['departures'] if d['trip_id']=='trip1')
+        self.assertTrue(current_trip['in_progress'])
+        self.assertEqual(current_trip['next_stop_index'],2)
+    def test_december_3_has_december_3_departures(self):
+        current=datetime(2026,12,3,17,50,tzinfo=app.WARSAW)
+        data=app.route_view('r904',date(2026,12,3),current)
+        self.assertEqual(data['active_trips'],2)
+        self.assertEqual({d['date'] for v in data['variants'] for d in v['departures']},{'2026-12-03'})
+    def test_overnight_25h_previous_service_date(self):
+        con=app.connect()
+        try:
+            con.execute('INSERT INTO routes VALUES(?,?,?,?,?)',('rnight','999N','Nocna','3',None))
+            con.execute('INSERT INTO trips VALUES(?,?,?,?,?,?)',('night25','rnight','today','Nocna pętla',0,None))
+            con.executemany('INSERT INTO stop_times VALUES(?,?,?,?,?,?)',[
+                ('night25','st1','25:10:00','25:10:00',1,0),
+                ('night25','st2','25:20:00','25:20:00',2,0)])
+            con.commit()
+            current=datetime(2026,12,3,0,40,tzinfo=app.WARSAW)
+            data=app.route_view('rnight',date(2026,12,3),current)
+            deps=[dep for v in data['variants'] for dep in v['departures']]
+            self.assertEqual(len(deps),1)
+            self.assertEqual(deps[0]['date'],'2026-12-03')
+            self.assertEqual(deps[0]['service_date'],'2026-12-02')
+            self.assertEqual(deps[0]['clock'],'01:10')
+            self.assertEqual(deps[0]['minutes'],30)
+        finally:
+            con.execute('DELETE FROM stop_times WHERE trip_id=?',('night25',))
+            con.execute('DELETE FROM trips WHERE trip_id=?',('night25',))
+            con.execute('DELETE FROM routes WHERE route_id=?',('rnight',))
+            con.commit();con.close()
+    def test_archive_date_coverage(self):
+        self.assertTrue(app.archive_covers_date(self.temp,date.today()))
+        self.assertFalse(app.archive_covers_date(self.temp,date(2040,1,1)))
     def test_health(self):
         status,body=call('/health');self.assertEqual(status,'200 OK');self.assertTrue(json.loads(body)['ok'])
     def test_missing_route_404(self):
