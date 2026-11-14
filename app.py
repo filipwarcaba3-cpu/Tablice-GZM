@@ -280,12 +280,43 @@ def state_from_db():
         return False
 
 
-def download_gtfs() -> tuple[Path,str]:
-    """Fast bounded discovery: explicit URL, newest CKAN resource, trusted mirror.
+def archive_covers_date(path: Path, target: date) -> bool:
+    """Reject a feed whose advertised service window cannot include today."""
+    try:
+        with zipfile.ZipFile(path) as z:
+            names=member_names(z)
+            if not {'routes.txt','stops.txt','trips.txt','stop_times.txt'}.issubset(names):return False
+            if 'feed_info.txt' in names:
+                info=next(csv_rows(z,names['feed_info.txt']),{})
+                start=info.get('feed_start_date','').replace('-','')
+                end=info.get('feed_end_date','').replace('-','')
+                key=target.strftime('%Y%m%d')
+                if (start and len(start)==8 and key<start) or (end and len(end)==8 and key>end):
+                    return False
+                if start or end:return True
+            # Some GTFS publishers omit feed_info. Calendar ranges still establish validity.
+            if 'calendar.txt' in names:
+                for row in csv_rows(z,names['calendar.txt']):
+                    if row.get('start_date','')<=target.strftime('%Y%m%d')<=row.get('end_date',''):
+                        return True
+            if 'calendar_dates.txt' in names:
+                key=target.strftime('%Y%m%d')
+                for row in csv_rows(z,names['calendar_dates.txt']):
+                    if row.get('date')==key and row.get('exception_type')=='1':return True
+            return False
+    except Exception:
+        return False
 
-    Never iterate through a long list of past schedules while users wait.
+
+def download_gtfs() -> tuple[Path,str]:
+    """Choose an actual GTFS snapshot covering the *current Warsaw date*.
+
+    The CKAN dataset publishes multiple dated snapshots, not a single
+    guaranteed multi-day archive. A newest-by-upload feed may begin in the
+    future. Never silently label future departures as today's departures.
     """
-    if ARCHIVE_CACHE.is_file() and time.time()-ARCHIVE_CACHE.stat().st_mtime<4*3600:
+    today=now_pl().date()
+    if ARCHIVE_CACHE.is_file() and time.time()-ARCHIVE_CACHE.stat().st_mtime<4*3600 and archive_covers_date(ARCHIVE_CACHE,today):
         return ARCHIVE_CACHE,'lokalny cache archiwum GTFS'
     sources=[]
     problems=[]
@@ -293,14 +324,15 @@ def download_gtfs() -> tuple[Path,str]:
         sources.append((GTFS_URL,'konfigurowany SIP_GTFS_URL'))
     try:
         STATE['stage']='Sprawdzanie katalogu GZM'
-        r=requests.get(CKAN, headers=UA, timeout=(5,9)); r.raise_for_status()
+        r=requests.get(CKAN,headers=UA,timeout=(5,9));r.raise_for_status()
         data=r.json()
-        if not data.get('success'): raise ValueError('CKAN success=false')
-        resources=[x for x in data['result']['resources']
-                   if str(x.get('url','')).lower().split('?')[0].endswith('.zip')]
-        resources.sort(key=lambda x:(x.get('created') or x.get('last_modified') or '', x.get('name') or ''),reverse=True)
-        if resources:
-            sources.append((resources[0]['url'],resources[0].get('name','GTFS GZM')))
+        if not data.get('success'):raise ValueError('CKAN success=false')
+        resources=[x for x in data['result']['resources'] if
+                   str(x.get('url','')).lower().split('?')[0].endswith('.zip')]
+        # Prefer newer daily GZM releases, but verify their advertised service dates.
+        resources.sort(key=lambda x:(x.get('created') or x.get('last_modified') or '',x.get('name') or ''),reverse=True)
+        for item in resources[:6]:
+            sources.append((item['url'],item.get('name','GTFS GZM')))
     except Exception as exc:
         problems.append('katalog GZM: '+str(exc))
     sources.append((MIRROR,'mirror GTFS GZM'))
@@ -321,15 +353,14 @@ def download_gtfs() -> tuple[Path,str]:
                             count+=len(chunk)
                             if count>260*1024*1024:raise ValueError('GTFS >260 MB')
                             out.write(chunk)
-            STATE['stage']='Sprawdzanie archiwum GTFS'
-            with zipfile.ZipFile(file) as z:
-                if not {'routes.txt','stops.txt','trips.txt','stop_times.txt'}.issubset(member_names(z)):
-                    raise ValueError('niekompletne GTFS')
+            STATE['stage']='Weryfikacja dat obowiązywania GTFS'
+            if not archive_covers_date(file,today):
+                raise ValueError('archiwum nie obejmuje daty '+today.isoformat())
             return file,url
         except Exception as exc:
             problems.append(label+': '+str(exc))
             if file:file.unlink(missing_ok=True)
-    raise RuntimeError('Nie udało się pobrać GTFS: '+'; '.join(problems[-3:]))
+    raise RuntimeError('Nie znaleziono aktualnego GTFS dla '+today.isoformat()+': '+'; '.join(problems[-4:]))
 
 
 def refresh_gtfs(provided: Path | None=None):
@@ -473,85 +504,94 @@ def trip_view(con, trip_id):
             'headsign':t['headsign'] or stops[-1]['name'], 'stops':stops}
 
 
-def route_view(route_id, day):
+def route_view(route_id, day, ref=None):
+    """Departures for the requested *civil date*, from the current Warsaw minute.
+
+    GTFS service-day times can exceed 24:00. A 25:10 departure from the
+    previous service date occurs at 01:10 on the requested civil date.
+    Never silently substitute another day's trips as today's departures.
+    """
     if not is_ready():return None
+    current=ref or now_pl()
+    start=(current if day==current.date() else datetime.combine(day,dt_time.min,tzinfo=WARSAW))
+    end=start+timedelta(hours=18) if day==current.date() else datetime.combine(day+timedelta(days=1),dt_time.min,tzinfo=WARSAW)
     with GATE:
         con=connect()
         try:
             route=con.execute('SELECT * FROM routes WHERE route_id=?',(route_id,)).fetchone()
             if route is None:return None
-            active=services_on(con,day)
             trips=con.execute('SELECT trip_id,headsign,direction_id,service_id FROM trips WHERE route_id=?',(route_id,)).fetchall()
-            active_trips=[t for t in trips if t['service_id'] in active]
-            trip_stops=defaultdict(list)
-            if active_trips:
-                for row in con.execute('''SELECT st.trip_id,st.stop_id,st.departure,st.arrival
-                    FROM stop_times st JOIN trips t ON t.trip_id=st.trip_id
-                    WHERE t.route_id=? ORDER BY st.trip_id,st.seq''',(route_id,)):
-                    trip_stops[row['trip_id']].append(row)
-            # Keep a representative of each stop pattern, plus departures on requested day.
+            by_day={}
+            first_day=day-timedelta(days=1)
+            last_day=end.date()
+            d=first_day
+            while d<=last_day:
+                by_day[d]=services_on(con,d)
+                d+=timedelta(days=1)
+            service_ids={x for values in by_day.values() for x in values}
+            relevant={t['trip_id']:t for t in trips if t['service_id'] in service_ids}
             by_pattern={}
-            for t in active_trips:
-                rows=trip_stops.get(t['trip_id'],[])
-                if not rows:continue
-                signature=(t['direction_id'],t['headsign'],tuple(r['stop_id'] for r in rows))
-                if signature not in by_pattern:
-                    key=hashlib.sha1(repr(signature).encode()).hexdigest()[:12]
-                    by_pattern[signature]={'id':key,'trip_id':t['trip_id'],
-                      'name':t['headsign'] or rows[-1]['stop_id'],'count':len(rows),'departures':[],
-                      'direction':t['direction_id']}
-                dep=rows[0]['departure'] or rows[0]['arrival']
-                by_pattern[signature]['departures'].append({'trip_id':t['trip_id'],'clock':gtfs_clock(dep),
-                                                             'seconds':gtfs_seconds(dep) or 0})
-            selected_day=day
-            if not by_pattern:
-                # If selected day has no service, present the next day that really runs,
-                # clearly labelled as a different day, never as today's departures.
-                for shift in range(1,36):
-                    candidate=day+timedelta(days=shift)
-                    active_next=services_on(con,candidate)
-                    avail=[t for t in trips if t['service_id'] in active_next]
-                    if not avail:continue
-                    selected_day=candidate
-                    for t in avail:
-                        rows=con.execute('SELECT stop_id,departure,arrival FROM stop_times WHERE trip_id=? ORDER BY seq',(t['trip_id'],)).fetchall()
-                        if not rows:continue
-                        signature=(t['direction_id'],t['headsign'],tuple(r['stop_id'] for r in rows))
+            if relevant:
+                trip_stops=defaultdict(list)
+                for row in con.execute("""SELECT st.trip_id,st.stop_id,st.departure,st.arrival
+                    FROM stop_times st JOIN trips t ON t.trip_id=st.trip_id
+                    WHERE t.route_id=? ORDER BY st.trip_id,st.seq""",(route_id,)):
+                    if row['trip_id'] in relevant:trip_stops[row['trip_id']].append(row)
+                for t in relevant.values():
+                    stops=trip_stops.get(t['trip_id'],[])
+                    if not stops:continue
+                    seconds=gtfs_seconds(stops[0]['departure'] or stops[0]['arrival'])
+                    if seconds is None:continue
+                    signature=(t['direction_id'],t['headsign'],tuple(r['stop_id'] for r in stops))
+                    for service_day, services in by_day.items():
+                        if t['service_id'] not in services:continue
+                        midnight=datetime.combine(service_day,dt_time.min,tzinfo=WARSAW)
+                        actual=midnight+timedelta(seconds=seconds)
+                        last_sec=gtfs_seconds(stops[-1]['arrival'] or stops[-1]['departure'])
+                        finish=midnight+timedelta(seconds=last_sec if last_sec is not None else seconds)
+                        in_progress=(actual<start<=finish)
+                        if not (start<=actual<end or in_progress):continue
+                        next_index=0
+                        if in_progress:
+                            for i,st in enumerate(stops):
+                                stop_sec=gtfs_seconds(st['arrival'] or st['departure'])
+                                if stop_sec is not None and midnight+timedelta(seconds=stop_sec)>=start:
+                                    next_index=i;break
                         if signature not in by_pattern:
                             key=hashlib.sha1(repr(signature).encode()).hexdigest()[:12]
                             by_pattern[signature]={'id':key,'trip_id':t['trip_id'],
-                                'name':t['headsign'] or rows[-1]['stop_id'],'count':len(rows),
+                                'name':t['headsign'] or stops[-1]['stop_id'],'count':len(stops),
                                 'departures':[],'direction':t['direction_id']}
-                        dep=rows[0]['departure'] or rows[0]['arrival']
-                        by_pattern[signature]['departures'].append({'trip_id':t['trip_id'],
-                            'clock':gtfs_clock(dep),'seconds':gtfs_seconds(dep) or 0})
-                    break
-            if not by_pattern and trips:
-                # GTFS sometimes advertises a route but contains no service within the
-                # current validity window. Show an actual stored trip as a route
-                # preview, NEVER claim it is a departure today.
-                selected_day=None
-                for t in trips[:250]:
-                    rows=con.execute('SELECT stop_id,departure,arrival FROM stop_times WHERE trip_id=? ORDER BY seq',(t['trip_id'],)).fetchall()
-                    if not rows:continue
-                    signature=(t['direction_id'],t['headsign'],tuple(r['stop_id'] for r in rows))
+                        by_pattern[signature]['departures'].append({
+                            'trip_id':t['trip_id'],'clock':actual.strftime('%H:%M'),
+                            'seconds':seconds,'date':actual.date().isoformat(),
+                            'service_date':service_day.isoformat(),'iso':actual.isoformat(),
+                            'minutes':0 if in_progress else max(0,math.ceil((actual-current).total_seconds()/60)),
+                            'in_progress':in_progress,'next_stop_index':next_index})
+            preview_only=not bool(by_pattern)
+            if preview_only and trips:
+                # Real GTFS route geometry is still visible without inventing an active service.
+                for t in trips[:100]:
+                    rows=con.execute('SELECT stop_id FROM stop_times WHERE trip_id=? ORDER BY seq',(t['trip_id'],)).fetchall()
+                    if len(rows)<2:continue
+                    signature=(t['direction_id'],t['headsign'],tuple(r[0] for r in rows))
                     if signature not in by_pattern:
                         key=hashlib.sha1(repr(signature).encode()).hexdigest()[:12]
                         by_pattern[signature]={'id':key,'trip_id':t['trip_id'],
-                            'name':t['headsign'] or rows[-1]['stop_id'],'count':len(rows),
+                            'name':t['headsign'] or rows[-1][0],'count':len(rows),
                             'departures':[],'direction':t['direction_id']}
-                    dep=rows[0]['departure'] or rows[0]['arrival']
-                    by_pattern[signature]['departures'].append({'trip_id':t['trip_id'],
-                        'clock':gtfs_clock(dep),'seconds':gtfs_seconds(dep) or 0})
-                # Distinguish the preview from a real scheduled date in the response.
-            variants=sorted(by_pattern.values(),key=lambda p:(p['direction'],p['name'], -p['count']))
-            for v in variants:
-                v['departures'].sort(key=lambda d:d['seconds'])
+            for v in by_pattern.values():
+                v['departures'].sort(key=lambda x:x['iso'])
                 v['departures']=v['departures'][:100]
-            return {'route':{'id':route_id,'number':route['short_name'],'name':route['long_name'],
-                             'type':route['route_type']},'variants':variants[:55],
-                    'date':selected_day.isoformat() if selected_day else None,'requested_date':day.isoformat(),
-                    'preview_only':selected_day is None,'active_trips':sum(len(v['departures']) for v in variants) if selected_day else 0}
+            variants=sorted(by_pattern.values(),key=lambda x:(
+                x['departures'][0]['iso'] if x['departures'] else 'z',
+                x['direction'],x['name']))
+            return {'route':{'id':route_id,'number':route['short_name'],
+                        'name':route['long_name'],'type':route['route_type']},
+                    'variants':variants[:55], 'date':day.isoformat(),
+                    'requested_date':day.isoformat(),'window_start':start.isoformat(),
+                    'window_end':end.isoformat(),'preview_only':preview_only,
+                    'active_trips':sum(len(v['departures']) for v in variants)}
         finally:con.close()
 
 
@@ -761,12 +801,12 @@ def app(environ,start_response):
         if method=='GET' and path in ('/','/index.html'):
             body=(HERE/'templates'/'index.html').read_bytes()
             start_response('200 OK',[('Content-Type','text/html; charset=utf-8'),('Content-Length',str(len(body))),
-                                     ('Cache-Control','no-cache')]);return [body]
+                                     ('Cache-Control','no-store')]);return [body]
         if method=='GET' and path=='/health':
-            return json_response(start_response,{'ok':True,'version':'3.8','gtfs_ready':is_ready(),'catalog_ready':STATE['catalog_ready']})
+            return json_response(start_response,{'ok':True,'version':'4.1','gtfs_ready':is_ready(),'catalog_ready':STATE['catalog_ready']})
         if method=='GET' and path=='/api/status':
-            return json_response(start_response,{**STATE,'version':'3.8',
-                    'today':now_pl().date().isoformat(),'timezone':'Europe/Warsaw'})
+            return json_response(start_response,{**STATE,'version':'4.1',
+                    'today':now_pl().date().isoformat(),'timezone':'Europe/Warsaw','feed_covers_today':bool(STATE.get('feed_start_date') and STATE.get('feed_end_date') and STATE['feed_start_date']<=now_pl().date().strftime('%Y%m%d')<=STATE['feed_end_date'])})
         if method=='GET' and path=='/api/routes':
             data=routes_list(parse_qs_1(environ,'mode','bus')!='all')
             return json_response(start_response,{'routes':data,'count':len(data)})
@@ -827,5 +867,5 @@ if os.environ.get('SIP_AUTOLOAD','1')=='1':
 
 if __name__=='__main__':
     port=int(os.environ.get('PORT','5000'))
-    print(f'Emulator SIP GZM 3.8: http://127.0.0.1:{port}',flush=True)
+    print(f'Emulator SIP GZM 4.1: http://127.0.0.1:{port}',flush=True)
     with make_server('0.0.0.0',port,app) as srv:srv.serve_forever()

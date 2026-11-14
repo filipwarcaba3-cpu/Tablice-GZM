@@ -1,9 +1,69 @@
+# Emulator SIP GZM 4.1 — godziny SIP + własne przystanki na mapie
+
+## Nowe w 4.1
+
+- W wybranym rzeczywistym kursie GTFS **przed planowanym odjazdem** w dolnym pasku wyświetlacza SIP pokazuje się „Odjazd o HH:MM”. Po lewej przy czterech kolejnych przystankach jest ich planowana godzina (powyżej minut do przyjazdu).
+- **Po rozpoczęciu kursu według rozkładu** tablica pokazuje również ostatnio minięte przystanki; zamiast minut dostają mały szary podpis „odjechał”. Widzimy maksymalnie cztery wiersze jednocześnie, więc w trakcie kursu widok przewija się wzdłuż trasy.
+- Oznaczenia miniętych przystanków bez danych pozycyjnych/GTFS-RT są **wyliczone z planowego rozkładu**, a nie z rzeczywistej lokalizacji autobusu.
+- Przyciski „Poprzedni”, „Następny” i „Symulacja” pozostają symulacją i są tak oznaczane, aby nie sugerować potwierdzonego przejazdu.
+- W edytorze własnej linii wpisuj **`Nazwa przystanku | minuty`**, opcjonalnie **`| szerokość geograficzna | długość geograficzna`**. Przyciskiem **„📍 Wskaż na mapie”** można wybrać nazwany przystanek i kliknąć jego położenie na interaktywnej mapie. Koordynaty zostaną dopisane automatycznie.
+- Własna linia działa i zapisuje się nawet przy braku współrzędnych. Przystanki bez współrzędnych nie mogą jednak być wyświetlane jako punkty na mapie. Trasa mapowa jest rysowana tylko na podstawie przystanków z lokalizacją.
+- Import JSON akceptuje własne przystanki z oboma współrzędnymi lub bez obu; nie akceptuje pojedynczej współrzędnej.
+
+### Instalacja GitHub + Render
+
+Rozpakuj ZIP, wgraj **zawartość folderu** do głównego katalogu repozytorium GitHub, zachowując strukturę `templates`, `data`, `tests`.
+
+Render:
+- Build: `pip install -r requirements.txt`
+- Start: `gunicorn --workers 1 --threads 8 --timeout 120 --bind 0.0.0.0:$PORT app:app`
+
+Na Windows uruchom `start_windows.bat`.
+
+**Uwaga:** informacje o godzinach wymagają załadowanego GTFS z potwierdzonym kursem. W podglądzie nieaktywnego wariantu trasy nie przypisujemy fikcyjnych godzin. Testy lokalne nie potwierdzają działania rzeczywistego GTFS na Twoim Renderze.
+
+---
+
+# Emulator SIP GZM 4.0 — tablica MKM, tryb jednej linii i lokalizacja
+
+### Najważniejsze zmiany 4.0
+
+- **Wybór linii przełącza mapę w tryb wybranej trasy**: usuwa skupiska i przystanki wszystkich innych linii, pokazuje wyłącznie przystanki wybranego kursu, przebieg linii oraz (jeśli dostępne) pojazdy GTFS-RT przypisane do tej linii. Wyczyszczenie linii przywraca mapę całej sieci.
+- **Przycisk „◎ Moja lokalizacja”**: pokazuje pozycję urządzenia (niebieski punkt) i szacowany promień dokładności. Korzysta z `navigator.geolocation` dopiero po kliknięciu oraz zgodzie przeglądarki. Na Render wymaga HTTPS; pozycja nie jest wysyłana do serwera emulatora.
+- **Tablica SIP**: nowe proporcje 645:306, mniejsza i węższa typografia, żółty nagłówek, osobny ZTM/data/zegar, pionowy czarny separator z małymi trójkątami, równe wiersze 4 przystanków i minut, jasnoszary pasek kierunku. Układ wzorowany na dostarczonej fotografii, nie twierdzimy, że czcionka jest dokładnie ta sama.
+- **Wydajność i czytelność**: w trybie całej mapy pojazdy są nadal ukrywane przy dalszym oddaleniu. W trybie konkretnej linii pokazujemy jej pozycje nawet przy mniejszym zoomie, ponieważ liczba elementów jest znacznie mniejsza.
+- **Bez fikcyjnych autobusów**: lokalizacja nie zastępuje danych GTFS-RT, a tablica rozkładowa nadal wymaga prawidłowo zaimportowanego GTFS. `data` i `templates` zachowują swoje nazwy oraz strukturę.
+
+### Uruchamianie i wdrażanie
+
+Wgraj **zawartość rozpakowanego folderu** do głównego katalogu repozytorium GitHub, zachowując `app.py`, `render.yaml`, `requirements.txt`, katalog `templates/` i `data/`. Na Render polecenie startowe to `gunicorn --workers 1 --threads 8 --timeout 120 --bind 0.0.0.0:$PORT app:app`, a build command `pip install -r requirements.txt`. Na Windows uruchom `start_windows.bat`.
+
+Uwaga: testy przeglądarkowe były wykonane lokalnie na **testowym** GTFS z imitacją mapy (brak dostępu sieciowego do zewnętrznego CDN). Nie potwierdzają wczytania całej aktualnej sieci GZM ani GTFS-RT na Twoim Renderze. Jeśli `/api/status` nie ma `ready:true`, najpierw trzeba naprawić pobieranie/import rozkładów.
+
+---
+
 # Emulator SIP GZM 3.7 — poprawki list i wyświetlacza
 
 - Każda kategoria linii sortowana jest naturalnie: 1, 2, 3, 10, 11, 100; M1, M2, M10, M103.
 - Numer linii na tablicy SIP mieści się w lewej kolumnie (również M103).
 - Gdy w żądanym przedziale dat GTFS brak aktywnych kursów, ale GTFS zawiera trasę, wyświetlacz może pokazać **podgląd zapisanego rzeczywistego wariantu**; **nie jest on rozkładem odjazdów na dziś**.
 - Nadal wymagane jest prawidłowe źródło GTFS i import na Render; pozycje live nie są symulowane.
+
+# Emulator SIP GZM 3.9 — aktualne daty i godziny kursów
+
+## Zmiany 3.9 — lista kursów według polskiego zegara
+
+- Domyślny rozkład korzysta z bieżącej daty i godziny `Europe/Warsaw` serwera. Kursy z wcześniejszej godziny, które już zakończyły przejazd, nie zajmują listy nadchodzących odjazdów.
+- Działa także wykrywanie kursów będących w trasie oraz obliczenie kolejnego przystanku na podstawie planowych godzin GTFS. Jest to *symulacja rozkładowa*, nie gwarantowana lokalizacja pojazdu.
+- Po północy przełączana jest data; kursy zapisane w GTFS godzinami `24:xx` / `25:xx` są przypisane do właściwej cywilnej daty odjazdu. Kurs rozpoczęty poprzedniego dnia może nadal być widoczny, gdy trwa w obecnym dniu.
+- Co minutę wczytywane są aktualne kursy wybranej linii, o ile nie wybrano ręcznie innego kursu. Ręczny wybór jest zachowywany do zmiany linii/dnia.
+- Górny panel ma osobny wybór linii, wariantu, kursu oraz przycisk „Wyczyść”. Ponowne kliknięcie wybranego numeru linii odznacza go.
+- Pobieranie GTFS sprawdza, czy archiwum obejmuje **dzisiejszą** datę; nie wczytuje celowo przyszłego rozkładu jako aktualnego. Jeśli nie uda się zdobyć danych z obowiązującą datą, status informuje o brakujących danych; nie wymyśla odjazdów.
+- Przy prezentacji podglądu trasy bez aktywnego kursu emulator oznacza ten widok jako **podgląd**, a nie dzisiejszy odjazd.
+
+**Uwaga:** źródła GZM i sieć muszą odpowiadać, aby baza była gotowa. Nie ma gwarancji działania danych na żywo (GTFS-RT) przy awarii dostawcy. Render bez trwałego dysku może ponownie importować GTFS po uśpieniu usługi. Testy lokalne nie potwierdzają działania na zewnętrznym Render użytkownika.
+
+## Historia wcześniejszych zmian
 
 # Emulator SIP GZM 3.2 — poprawka pustej mapy i importu GTFS
 
